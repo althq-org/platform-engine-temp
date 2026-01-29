@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Poll GitHub Actions workflow run until complete. On failure, fetch and display failed logs.
-# Usage: ./scripts/check_workflow.sh [repo] [run_id]
+# Usage: ./scripts/check_workflow.sh [repo] [run_id] [workflow_file]
 #   repo: e.g. althq-org/my-ecs-service (default: althq-org/my-ecs-service)
 #   run_id: optional; if omitted, uses latest run for main branch
+#   workflow_file: optional; e.g. deploy.yaml to watch Deploy workflow only
 # Exit: 0=success, 1=failure, 2=timeout
 # Prerequisite: gh CLI installed and authenticated
 
@@ -10,6 +11,7 @@ set -euo pipefail
 
 REPO="${1:-althq-org/my-ecs-service}"
 RUN_ID="${2:-}"
+WORKFLOW_FILE="${3:-}"
 POLL_INTERVAL="${POLL_INTERVAL:-15}"
 TIMEOUT_MINUTES="${TIMEOUT_MINUTES:-60}"
 TIMEOUT_SECONDS=$((TIMEOUT_MINUTES * 60))
@@ -21,10 +23,14 @@ if ! command -v gh &>/dev/null; then
 fi
 
 if [[ -z "$RUN_ID" ]]; then
-  echo "Getting latest run for $REPO (branch: main)..."
-  RUN_ID=$(gh run list --repo "$REPO" --branch main --limit 1 --json databaseId --jq '.[0].databaseId')
+  echo "Getting latest run for $REPO (branch: main)${WORKFLOW_FILE:+ workflow: $WORKFLOW_FILE}..."
+  if [[ -n "$WORKFLOW_FILE" ]]; then
+    RUN_ID=$(gh run list --repo "$REPO" --branch main --workflow "$WORKFLOW_FILE" --limit 1 --json databaseId --jq '.[0].databaseId')
+  else
+    RUN_ID=$(gh run list --repo "$REPO" --branch main --limit 1 --json databaseId --jq '.[0].databaseId')
+  fi
   if [[ -z "$RUN_ID" || "$RUN_ID" == "null" ]]; then
-    echo "No runs found for $REPO on main." >&2
+    echo "No runs found for $REPO on main.${WORKFLOW_FILE:+ (workflow: $WORKFLOW_FILE)}" >&2
     exit 2
   fi
   echo "Run ID: $RUN_ID"

@@ -48,7 +48,7 @@ jobs:
           repository: althq-org/platform-engine-temp
           ref: main
           path: engine
-          token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Checkout service repo
         uses: actions/checkout@v4
