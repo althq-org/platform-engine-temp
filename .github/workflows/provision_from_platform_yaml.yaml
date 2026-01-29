@@ -81,7 +81,6 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          echo "$HOME/.local/bin" >> $GITHUB_ENV
 
       - name: Install Pulumi and dependencies
         working-directory: engine
@@ -90,7 +89,6 @@ jobs:
           poetry install --no-interaction
           curl -fsSL https://get.pulumi.com | sh
           echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
-          echo "$HOME/.pulumi/bin" >> $GITHUB_ENV
 
       - name: Select or create Pulumi stack
         working-directory: engine
