@@ -86,7 +86,7 @@ jobs:
         working-directory: engine
         run: |
           poetry config virtualenvs.in-project true
-          poetry install --no-interaction
+          poetry install --no-interaction --no-root
           curl -fsSL https://get.pulumi.com | sh
           echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
 

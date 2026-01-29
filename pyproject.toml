@@ -5,6 +5,7 @@ description = "Reusable workflow + Pulumi engine for provisioning services from 
 authors = ["AltHQ"]
 readme = "README.md"
 packages = []
+package-mode = false
 
 [tool.poetry.dependencies]
 python = "^3.11"
