@@ -1,0 +1,157 @@
+# Reusable workflow: provision a service from platform.yaml (ECR, ECS, ALB listener rule, Cloudflare DNS).
+# Called by service repos (e.g. my-ecs-service) on push to main.
+name: Provision from platform.yaml
+
+on:
+  workflow_call:
+    inputs:
+      service_repo:
+        description: "Repo containing platform.yaml (e.g. althq-org/my-ecs-service)"
+        required: true
+        type: string
+      ref:
+        description: "Ref to checkout (branch or SHA)"
+        required: false
+        default: main
+        type: string
+      platform_yaml_path:
+        description: "Path to platform.yaml relative to repo root"
+        required: false
+        default: platform.yaml
+        type: string
+      stack:
+        description: "Environment stack (e.g. dev)"
+        required: false
+        default: dev
+        type: string
+      aws_region:
+        description: "AWS region"
+        required: true
+        type: string
+      aws_acct_id:
+        description: "AWS account ID"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  provision:
+    name: Provision and Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout platform-engine-temp
+        uses: actions/checkout@v4
+        with:
+          repository: althq-org/platform-engine-temp
+          ref: main
+          path: engine
+          token: ${{ secrets.REPO_ACCESS_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Checkout service repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.service_repo }}
+          ref: ${{ inputs.ref }}
+          path: service
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get service name from platform.yaml
+        id: service_name
+        run: |
+          pip install pyyaml -q
+          SERVICE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))['metadata']['name'])")
+          echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_OUTPUT
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws_acct_id }}:role/platform_engine_temp_workflows
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          echo "$HOME/.local/bin" >> $GITHUB_ENV
+
+      - name: Install Pulumi and dependencies
+        working-directory: engine
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+          echo "$HOME/.pulumi/bin" >> $GITHUB_ENV
+
+      - name: Select or create Pulumi stack
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          PULUMI_CONFIG_PASSPHRASE: ""
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          poetry run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null || poetry run pulumi stack init "$STACK_NAME" -C devops
+
+      - name: Set Pulumi config
+        working-directory: engine
+        env:
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          poetry run pulumi config set aws:region ${{ inputs.aws_region }} -C devops
+
+      - name: Pulumi up
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          PULUMI_CONFIG_PASSPHRASE: ""
+          AWS_REGION: ${{ inputs.aws_region }}
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          poetry run pulumi up --yes --non-interactive -C devops
+
+      - name: Get Pulumi outputs
+        id: pulumi_outputs
+        working-directory: engine
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          ECR_URI=$(poetry run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecr_repository_uri // empty')
+          CLUSTER=$(poetry run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_cluster_name // empty')
+          SERVICE=$(poetry run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_service_name // empty')
+          echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
+          echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
+          echo "service=$SERVICE" >> $GITHUB_OUTPUT
+
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
+
+      - name: Build and push Docker image
+        run: |
+          ECR_URI="${{ steps.pulumi_outputs.outputs.ecr_uri }}"
+          docker build -t "$ECR_URI:latest" ./service
+          docker push "$ECR_URI:latest"
+
+      - name: Force ECS service deployment
+        run: |
+          aws ecs update-service \
+            --cluster "${{ steps.pulumi_outputs.outputs.cluster }}" \
+            --service "${{ steps.pulumi_outputs.outputs.service }}" \
+            --force-new-deployment \
+            --region ${{ inputs.aws_region }}
+
+      - name: Output service URL
+        run: |
+          echo "Service URL: https://${{ steps.service_name.outputs.service_name }}.althq-dev.com"

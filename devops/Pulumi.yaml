@@ -1,0 +1,3 @@
+name: platform-engine
+runtime: python
+description: Provisions one service from platform.yaml (ECR, ECS, shared ALB listener rule, Cloudflare DNS).

@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "platform-engine-temp"
+version = "0.1.0"
+description = "Reusable workflow + Pulumi engine for provisioning services from platform.yaml"
+authors = ["AltHQ"]
+readme = "README.md"
+packages = []
+
+[tool.poetry.dependencies]
+python = "^3.11"
+pulumi = "^3.0"
+pulumi-aws = "^6.0"
+pulumi-cloudflare = "^5.0"
+pyyaml = "^6.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
