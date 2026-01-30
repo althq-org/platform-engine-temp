@@ -280,8 +280,8 @@ ecs_service = pulumi_aws.ecs.Service(
     opts=pulumi.ResourceOptions(depends_on=[listener_rule]),
 )
 
-# Cloudflare DNS: service_name -> ALB
-dns_record = pulumi_cloudflare.DnsRecord(
+# Cloudflare DNS: service_name -> ALB (Record is the resource name in pulumi-cloudflare Python SDK)
+dns_record = pulumi_cloudflare.Record(
     f"{service_name}_dns",
     zone_id=zone.id,
     name=service_name,
