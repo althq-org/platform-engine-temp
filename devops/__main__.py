@@ -73,7 +73,9 @@ zone = pulumi_cloudflare.get_zone(
     zone_id=cf_zone_id_param.value,
     opts=pulumi.InvokeOptions(provider=cf_provider),
 )
-hostname = pulumi.Output.from_input(service_name).apply(lambda s: f"{s}.{zone.name}")
+# get_zone returns plain values; zone.name is str
+zone_name = zone.name
+hostname = pulumi.Output.from_input(f"{service_name}.{zone_name}")
 
 # --- Per-service resources ---
 # ECR repository
@@ -198,7 +200,7 @@ target_group = pulumi_aws.lb.TargetGroup(
 # Listener rule: hostname -> target group (priority from hash of name)
 import hashlib
 priority = 200 + (int(hashlib.md5(service_name.encode()).hexdigest()[:4], 16) % 90000)
-hostname_str = zone.name.apply(lambda z: f"{service_name}.{z}")
+hostname_str = pulumi.Output.from_input(f"{service_name}.{zone_name}")
 
 
 def make_listener_conditions(h: str):
