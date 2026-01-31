@@ -1,0 +1,151 @@
+# Reusable workflow: destroy a service's AWS resources via Pulumi.
+# Called by service repos when triggered manually with confirmation.
+name: Destroy Service
+
+on:
+  workflow_call:
+    inputs:
+      confirm_name:
+        description: "Service name to confirm destruction (must match platform.yaml metadata.name)"
+        required: true
+        type: string
+      platform_yaml_path:
+        description: "Path to platform.yaml relative to repo root"
+        required: false
+        default: platform.yaml
+        type: string
+      stack:
+        description: "Environment stack (e.g. dev)"
+        required: false
+        default: dev
+        type: string
+      aws_region:
+        description: "AWS region"
+        required: false
+        default: us-west-2
+        type: string
+      aws_acct_id:
+        description: "AWS account ID"
+        required: false
+        default: "470935583836"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    name: Destroy Service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout platform-engine-temp
+        uses: actions/checkout@v4
+        with:
+          repository: althq-org/platform-engine-temp
+          ref: main
+          path: engine
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout service repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          path: service
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get service name from platform.yaml
+        id: service_name
+        run: |
+          pip install pyyaml -q
+          SERVICE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))['metadata']['name'])")
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Validate confirmation
+        run: |
+          EXPECTED="${{ steps.service_name.outputs.service_name }}"
+          PROVIDED="${{ inputs.confirm_name }}"
+          
+          if [ "$PROVIDED" != "$EXPECTED" ]; then
+            echo "❌ Confirmation failed!"
+            echo "   Expected: '$EXPECTED'"
+            echo "   Provided: '$PROVIDED'"
+            echo ""
+            echo "To destroy this service, you must type the exact service name."
+            exit 1
+          fi
+          
+          echo "✓ Confirmation validated: '$PROVIDED'"
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ inputs.aws_region }}
+          role-to-assume: arn:aws:iam::${{ inputs.aws_acct_id }}:role/platform_engine_temp_workflows
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Pulumi and dependencies
+        working-directory: engine
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction --no-root
+          curl -fsSL https://get.pulumi.com | sh
+          echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
+
+      - name: Select Pulumi stack
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          
+          if ! poetry run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null; then
+            echo "❌ Stack '$STACK_NAME' not found. Nothing to destroy."
+            exit 1
+          fi
+          
+          echo "✓ Selected stack: $STACK_NAME"
+
+      - name: Pulumi destroy
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          echo "🗑️ Destroying all resources for ${{ steps.service_name.outputs.service_name }}..."
+          poetry run pulumi destroy --yes --non-interactive -C devops
+
+      - name: Remove Pulumi stack
+        working-directory: engine
+        env:
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          echo "🗑️ Removing Pulumi stack..."
+          poetry run pulumi stack rm --yes -C devops || true
+
+      - name: Destruction complete
+        run: |
+          echo "✅ Service '${{ steps.service_name.outputs.service_name }}' has been destroyed."
+          echo ""
+          echo "The following resources have been removed:"
+          echo "  - ECR repository"
+          echo "  - ECS cluster, service, and tasks"
+          echo "  - Target group and ALB listener rule"
+          echo "  - Security group"
+          echo "  - IAM roles"
+          echo "  - Cloudflare DNS record"
+          echo "  - Pulumi stack state"

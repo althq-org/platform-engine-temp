@@ -94,12 +94,15 @@ jobs:
         working-directory: engine
         env:
           PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
-          PULUMI_CONFIG_PASSPHRASE: ""
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          poetry run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null || poetry run pulumi stack init "$STACK_NAME" -C devops
+          # Try to select existing stack, or create new one with KMS secrets provider
+          poetry run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null || \
+            poetry run pulumi stack init "$STACK_NAME" \
+              --secrets-provider="awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}" \
+              -C devops
 
       - name: Set Pulumi config
         working-directory: engine
@@ -109,11 +112,40 @@ jobs:
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           poetry run pulumi config set aws:region ${{ inputs.aws_region }} -C devops
 
+      - name: Export secrets from platform.yaml
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+        run: |
+          # Read which secrets this service needs from platform.yaml
+          REQUIRED_SECRETS=$(python3 -c "
+          import yaml
+          config = yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))
+          secrets = config.get('spec', {}).get('secrets', [])
+          print(' '.join(secrets))
+          ")
+          
+          if [ -z "$REQUIRED_SECRETS" ]; then
+            echo "No secrets declared in platform.yaml"
+            exit 0
+          fi
+          
+          # Export each required secret to GITHUB_ENV
+          for SECRET_NAME in $REQUIRED_SECRETS; do
+            SECRET_VALUE=$(echo "$ALL_SECRETS" | jq -r ".[\"$SECRET_NAME\"] // empty")
+            if [ -n "$SECRET_VALUE" ]; then
+              # Mask the secret value in logs
+              echo "::add-mask::$SECRET_VALUE"
+              echo "$SECRET_NAME=$SECRET_VALUE" >> $GITHUB_ENV
+              echo "✓ Found secret: $SECRET_NAME"
+            else
+              echo "⚠ Missing secret: $SECRET_NAME (not set in GitHub secrets)"
+            fi
+          done
+
       - name: Pulumi up
         working-directory: engine
         env:
           PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
-          PULUMI_CONFIG_PASSPHRASE: ""
           AWS_REGION: ${{ inputs.aws_region }}
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |

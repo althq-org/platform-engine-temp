@@ -38,27 +38,49 @@ max_capacity = compute.get("instances", {}).get("max", 10)
 aws_config = pulumi.Config("aws")
 region = aws_config.require("region")
 
+# Create AWS provider with default tags for all resources
+aws_provider = pulumi_aws.Provider(
+    "aws-tagged",
+    region=region,
+    default_tags=pulumi_aws.ProviderDefaultTagsArgs(
+        tags={
+            "service": service_name,
+        }
+    ),
+)
+
 # --- Look up shared infrastructure ---
 # Private subnets (tag network=private)
 private_subnets = pulumi_aws.ec2.get_subnets(
     filters=[
         pulumi_aws.ec2.GetSubnetsFilterArgs(name="tag:network", values=["private"])
-    ]
+    ],
+    opts=pulumi.InvokeOptions(provider=aws_provider),
 )
 if not private_subnets.ids:
     raise SystemExit("No private subnets found (tag network=private)")
 
 # VPC from first subnet
-first_subnet = pulumi_aws.ec2.get_subnet(id=private_subnets.ids[0])
-vpc = pulumi_aws.ec2.get_vpc(id=first_subnet.vpc_id)
+first_subnet = pulumi_aws.ec2.get_subnet(
+    id=private_subnets.ids[0],
+    opts=pulumi.InvokeOptions(provider=aws_provider),
+)
+vpc = pulumi_aws.ec2.get_vpc(
+    id=first_subnet.vpc_id,
+    opts=pulumi.InvokeOptions(provider=aws_provider),
+)
 
 # External ALB (product-external-alb)
-external_alb = pulumi_aws.lb.get_load_balancer(name="product-external-alb")
+external_alb = pulumi_aws.lb.get_load_balancer(
+    name="product-external-alb",
+    opts=pulumi.InvokeOptions(provider=aws_provider),
+)
 
 # 443 listener on external ALB
 listener_443 = pulumi_aws.lb.get_listener(
     load_balancer_arn=external_alb.arn,
     port=443,
+    opts=pulumi.InvokeOptions(provider=aws_provider),
 )
 
 # Cloudflare: SSM has token and zone_id (same as platform product)
@@ -86,6 +108,7 @@ ecr_repo = pulumi_aws.ecr.Repository(
     image_scanning_configuration=pulumi_aws.ecr.RepositoryImageScanningConfigurationArgs(
         scan_on_push=False,
     ),
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 ecr_lifecycle = pulumi_aws.ecr.LifecyclePolicy(
     f"{service_name}_ecr_lifecycle",
@@ -98,6 +121,7 @@ ecr_lifecycle = pulumi_aws.ecr.LifecyclePolicy(
             "action": {"type": "expire"},
         }],
     }),
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 # ECS cluster
@@ -105,6 +129,7 @@ cluster = pulumi_aws.ecs.Cluster(
     f"{service_name}_cluster",
     name=service_name,
     settings=[pulumi_aws.ecs.ClusterSettingArgs(name="containerInsights", value="disabled")],
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 # Security group for ECS tasks (allow 80 from VPC)
@@ -130,6 +155,7 @@ ecs_sg = pulumi_aws.ec2.SecurityGroup(
             cidr_blocks=["0.0.0.0/0"],
         ),
     ],
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 # IAM task role (ECR pull + CloudWatch logs)
@@ -144,16 +170,19 @@ task_role = pulumi_aws.iam.Role(
             "Principal": {"Service": "ecs-tasks.amazonaws.com"},
         }],
     }),
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 pulumi_aws.iam.RolePolicyAttachment(
     f"{service_name}_task_ecr",
     role=task_role.name,
     policy_arn="arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 pulumi_aws.iam.RolePolicyAttachment(
     f"{service_name}_task_logs",
     role=task_role.name,
     policy_arn="arn:aws:iam::aws:policy/CloudWatchLogsFullAccess",
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 execution_role = pulumi_aws.iam.Role(
     f"{service_name}_exec_role",
@@ -166,16 +195,19 @@ execution_role = pulumi_aws.iam.Role(
             "Principal": {"Service": "ecs-tasks.amazonaws.com"},
         }],
     }),
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 pulumi_aws.iam.RolePolicyAttachment(
     f"{service_name}_exec_ecr",
     role=execution_role.name,
     policy_arn="arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 pulumi_aws.iam.RolePolicyAttachment(
     f"{service_name}_exec_logs",
     role=execution_role.name,
     policy_arn="arn:aws:iam::aws:policy/CloudWatchLogsFullAccess",
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 # Target group (HTTP 80, health check)
@@ -195,6 +227,7 @@ target_group = pulumi_aws.lb.TargetGroup(
         unhealthy_threshold=3,
     ),
     deregistration_delay=60,
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 # Listener rule: hostname -> target group (priority from hash of name)
@@ -215,22 +248,38 @@ listener_rule = pulumi_aws.lb.ListenerRule(
     priority=priority,
     actions=[pulumi_aws.lb.ListenerRuleActionArgs(type="forward", target_group_arn=target_group.arn)],
     conditions=hostname_str.apply(make_listener_conditions),
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 # Image URI: repo:latest (workflow pushes after Pulumi up)
 image_uri = pulumi.Output.concat(ecr_repo.repository_url, ":latest")
 
+# Collect secrets from environment variables (set by workflow from GitHub secrets)
+# The workflow reads spec.secrets from platform.yaml and exports matching GitHub secrets
+secret_names = spec.get("secrets", [])
+container_secrets = []
+for name in secret_names:
+    value = os.environ.get(name)
+    if value:
+        container_secrets.append({"name": name, "value": value})
+        pulumi.log.info(f"Secret '{name}' will be passed to container")
+    else:
+        pulumi.log.warn(f"Secret '{name}' declared in platform.yaml but not found in environment")
+
+
 def make_container_def(uri: str) -> str:
+    env_vars = [
+        {"name": "PYTHONUNBUFFERED", "value": "1"},
+        {"name": "UVICORN_HOST", "value": "0.0.0.0"},
+        {"name": "UVICORN_PORT", "value": str(container_port)},
+    ] + container_secrets  # Add secrets from GitHub
+
     return json.dumps([{
         "name": service_name.replace(".", "-").replace("/", "-")[:255],
         "image": uri,
         "essential": True,
         "portMappings": [{"containerPort": container_port, "protocol": "tcp", "name": "http"}],
-        "environment": [
-            {"name": "PYTHONUNBUFFERED", "value": "1"},
-            {"name": "UVICORN_HOST", "value": "0.0.0.0"},
-            {"name": "UVICORN_PORT", "value": str(container_port)},
-        ],
+        "environment": env_vars,
         "logConfiguration": {
             "logDriver": "awslogs",
             "options": {
@@ -254,6 +303,7 @@ task_def = pulumi_aws.ecs.TaskDefinition(
     execution_role_arn=execution_role.arn,
     task_role_arn=task_role.arn,
     container_definitions=container_def,
+    opts=pulumi.ResourceOptions(provider=aws_provider),
 )
 
 ecs_service = pulumi_aws.ecs.Service(
@@ -277,7 +327,7 @@ ecs_service = pulumi_aws.ecs.Service(
         enable=True,
         rollback=True,
     ),
-    opts=pulumi.ResourceOptions(depends_on=[listener_rule]),
+    opts=pulumi.ResourceOptions(provider=aws_provider, depends_on=[listener_rule]),
 )
 
 # Cloudflare DNS: service_name -> ALB (Record is the resource name in pulumi-cloudflare Python SDK)
