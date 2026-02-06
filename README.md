@@ -30,6 +30,43 @@ jobs:
     secrets: inherit
 ```
 
+## Platform CLI (list, create, destroy)
+
+The CLI lets you manage infrastructure without dealing with infrastructure tooling directly. Run from the repo root.
+
+**One-time setup:** Run once (e.g. after cloning or on a new machine):
+
+```bash
+uv run platform setup
+```
+
+You will need: 1) AWS credentials (e.g. `aws sso login`), 2) S3 URI for state storage (e.g. `s3://your-account-pulumi-backend-software`), 3) default AWS region. These are stored in `.platform-engine/config.yaml` (gitignored).
+
+**Then use:**
+
+| Command | What it does |
+|--------|----------------|
+| `uv run platform list` | List all engine-managed resources (grouped by service) |
+| `uv run platform create <path>` | Provision infrastructure from a platform.yaml (path can be a fixture or another project) |
+| `uv run platform destroy <service-name>` | Remove all infrastructure for that service (prompts to confirm) |
+
+You only need to give your intent: list, create, or destroy. Stack selection, config, and state storage are handled for you. **Note:** `platform list` only needs AWS credentials (no setup). Setup is required for `create` and `destroy`.
+
+## Development (uv)
+
+**Important:** Use `uv sync --extra dev` so dev tools (pytest, ruff, pyright) are installed. Plain `uv sync` installs only runtime deps and will remove dev tools. Then you can run:
+
+| Command | What it does |
+|--------|----------------|
+| `uv run lint` | Ruff check (devops + tests) |
+| `uv run lint-fix` | Ruff check --fix |
+| `uv run format` | Ruff format |
+| `uv run type-check` | Pyright on devops |
+| `uv run test` | Pytest |
+| `uv run test-cov` | Pytest with coverage |
+
+These are defined as **script entry points** in `pyproject.toml` under `[project.scripts]`. Use this table or `pyproject.toml` as the source of truth.
+
 ## Scripts
 
 - `scripts/check_workflow.sh` – Poll GitHub Actions run until complete; on failure, show failed logs.

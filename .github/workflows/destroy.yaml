@@ -88,16 +88,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+          curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install Pulumi and dependencies
         working-directory: engine
         run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction --no-root
+          uv sync
           curl -fsSL https://get.pulumi.com | sh
           echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
 
@@ -110,7 +109,7 @@ jobs:
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           
-          if ! poetry run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null; then
+          if ! uv run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null; then
             echo "❌ Stack '$STACK_NAME' not found. Nothing to destroy."
             exit 1
           fi
@@ -126,7 +125,7 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           echo "🗑️ Destroying all resources for ${{ steps.service_name.outputs.service_name }}..."
-          poetry run pulumi destroy --yes --non-interactive -C devops
+          uv run pulumi destroy --yes --non-interactive -C devops
 
       - name: Remove Pulumi stack
         working-directory: engine
@@ -135,7 +134,7 @@ jobs:
         run: |
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           echo "🗑️ Removing Pulumi stack..."
-          poetry run pulumi stack rm --yes -C devops || true
+          uv run pulumi stack rm --yes -C devops || true
 
       - name: Destruction complete
         run: |

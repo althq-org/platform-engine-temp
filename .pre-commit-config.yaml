@@ -1,0 +1,31 @@
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: Ruff linting
+        entry: uv run ruff check devops tests
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: ruff-format
+        name: Ruff formatting
+        entry: uv run ruff format --check devops tests
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: pyright
+        name: Pyright type checking
+        entry: uv run pyright devops
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: pytest
+        name: Pytest
+        entry: uv run pytest tests/ -v
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

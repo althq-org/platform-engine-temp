@@ -77,16 +77,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install Poetry
+      - name: Install uv
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+          curl -LsSf https://astral.sh/uv/install.sh | sh
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install Pulumi and dependencies
         working-directory: engine
         run: |
-          poetry config virtualenvs.in-project true
-          poetry install --no-interaction --no-root
+          uv sync
           curl -fsSL https://get.pulumi.com | sh
           echo "$HOME/.pulumi/bin" >> $GITHUB_PATH
 
@@ -99,8 +98,8 @@ jobs:
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           # Try to select existing stack, or create new one with KMS secrets provider
-          poetry run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null || \
-            poetry run pulumi stack init "$STACK_NAME" \
+          uv run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null || \
+            uv run pulumi stack init "$STACK_NAME" \
               --secrets-provider="awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}" \
               -C devops
 
@@ -110,7 +109,7 @@ jobs:
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          poetry run pulumi config set aws:region ${{ inputs.aws_region }} -C devops
+          uv run pulumi config set aws:region ${{ inputs.aws_region }} -C devops
 
       - name: Export secrets from platform.yaml
         env:
@@ -150,16 +149,16 @@ jobs:
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          poetry run pulumi up --yes --non-interactive -C devops
+          uv run pulumi up --yes --non-interactive -C devops
 
       - name: Get Pulumi outputs
         id: pulumi_outputs
         working-directory: engine
         run: |
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          ECR_URI=$(poetry run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecr_repository_uri // empty')
-          CLUSTER=$(poetry run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_cluster_name // empty')
-          SERVICE=$(poetry run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_service_name // empty')
+          ECR_URI=$(uv run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecr_repository_uri // empty')
+          CLUSTER=$(uv run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_cluster_name // empty')
+          SERVICE=$(uv run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_service_name // empty')
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
           echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
           echo "service=$SERVICE" >> $GITHUB_OUTPUT

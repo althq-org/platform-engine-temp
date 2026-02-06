@@ -6,6 +6,9 @@ venv/
 *.egg-info/
 .python-version
 
+# Platform CLI local config (backend URL, region)
+.platform-engine/
+
 # Pulumi
 .devops/
 *.pyc
