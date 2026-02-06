@@ -9,9 +9,9 @@ def create_dns_record(
     alb_dns_name: str,
     zone_id: str,
     cf_provider: pulumi_cloudflare.Provider,
-) -> pulumi_cloudflare.Record:
+) -> pulumi_cloudflare.dns_record.DnsRecord:
     """Create Cloudflare CNAME record: service_name -> ALB DNS name (proxied)."""
-    return pulumi_cloudflare.Record(
+    return pulumi_cloudflare.DnsRecord(
         f"{service_name}_dns",
         zone_id=zone_id,
         name=service_name,

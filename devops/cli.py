@@ -16,6 +16,9 @@ CONFIG_FILENAME = "config.yaml"
 TAG_MANAGED = "platform-engine-managed"
 TAG_SERVICE = "service"
 DEFAULT_STACK_PREFIX = "dev"
+# Dev-only: hardcoded backend and region (matches GitHub workflows and admin-console)
+DEFAULT_BACKEND_URL = "s3://470935583836-pulumi-backend-software"
+DEFAULT_REGION = "us-west-2"
 KMS_SECRETS_PROVIDER_TEMPLATE = "awskms://alias/pulumi_backend_software?region={region}"
 
 
@@ -80,16 +83,37 @@ def _check_aws_credentials() -> bool:
         return False
 
 
-def _run(cmd: list[str], env: dict[str, str] | None = None, check: bool = True) -> subprocess.CompletedProcess:
+def _check_pulumi_cli() -> None:
+    """Ensure Pulumi CLI is on PATH (required for create/destroy). Exits with message if not."""
+    try:
+        subprocess.run(
+            ["pulumi", "version"],
+            capture_output=True,
+            check=True,
+            timeout=5,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
+        print(
+            "Pulumi CLI not found. Install it from https://www.pulumi.com/docs/install/ "
+            "(e.g. curl -fsSL https://get.pulumi.com | sh)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _run(
+    cmd: list[str],
+    env: dict[str, str] | None = None,
+    check: bool = True,
+    *,
+    stderr: int | None = None,
+) -> subprocess.CompletedProcess:
     full_env = os.environ.copy()
     if env:
         full_env.update(env)
-    return subprocess.run(
-        cmd,
-        cwd=_project_root(),
-        env=full_env,
-        check=check,
-    )
+    if stderr is not None:
+        return subprocess.run(cmd, cwd=_project_root(), env=full_env, check=check, stderr=stderr)
+    return subprocess.run(cmd, cwd=_project_root(), env=full_env, check=check)
 
 
 def _service_name_from_yaml(path: Path) -> str:
@@ -108,10 +132,9 @@ def _stack_name(service_name: str, config: dict[str, Any]) -> str:
 
 
 def _cmd_setup() -> None:
-    print("First-time setup. You will need:")
+    print("First-time setup (dev). You will need:")
     print("  1) AWS credentials (e.g. run: aws sso login)")
-    print("  2) S3 URI for infrastructure state (e.g. s3://your-account-pulumi-backend-software)")
-    print("  3) Default AWS region (e.g. us-west-2)")
+    print("  2) Default AWS region (optional; default: us-west-2)")
     print()
 
     if not _check_aws_credentials():
@@ -119,19 +142,22 @@ def _cmd_setup() -> None:
         sys.exit(1)
     print("AWS credentials OK.")
 
-    backend_url = os.environ.get("PLATFORM_ENGINE_BACKEND_URL", "").strip()
-    if not backend_url:
-        backend_url = input("S3 URI for infrastructure state: ").strip()
-    if not backend_url:
-        print("Backend URL is required.", file=sys.stderr)
-        sys.exit(1)
+    backend_url = os.environ.get("PLATFORM_ENGINE_BACKEND_URL", "").strip() or DEFAULT_BACKEND_URL
+    prompt_backend = f"S3 URI for infrastructure state [{DEFAULT_BACKEND_URL}]: "
+    if not os.environ.get("PLATFORM_ENGINE_BACKEND_URL"):
+        raw = input(prompt_backend).strip()
+        if raw:
+            backend_url = raw
+    else:
+        print(f"Using backend from PLATFORM_ENGINE_BACKEND_URL: {backend_url}")
 
-    region = os.environ.get("PLATFORM_ENGINE_REGION", "").strip()
-    if not region:
-        region = input("Default AWS region (e.g. us-west-2): ").strip()
-    if not region:
-        print("Region is required.", file=sys.stderr)
-        sys.exit(1)
+    region = os.environ.get("PLATFORM_ENGINE_REGION", "").strip() or DEFAULT_REGION
+    if not os.environ.get("PLATFORM_ENGINE_REGION"):
+        raw = input(f"Default AWS region [{DEFAULT_REGION}]: ").strip()
+        if raw:
+            region = raw
+    else:
+        print(f"Using region from PLATFORM_ENGINE_REGION: {region}")
 
     stack_prefix = os.environ.get("PLATFORM_ENGINE_STACK_PREFIX", DEFAULT_STACK_PREFIX).strip() or DEFAULT_STACK_PREFIX
     _save_config(backend_url, region, stack_prefix)
@@ -149,7 +175,7 @@ def _cmd_list() -> None:
         sys.exit(1)
 
     config = _load_config()
-    region = config.get("region") if config else os.environ.get("AWS_REGION", "us-west-2")
+    region = (config.get("region") if config else None) or os.environ.get("AWS_REGION") or DEFAULT_REGION
     client = boto3.client("resourcegroupstaggingapi", region_name=region)
     services: dict[str, list[dict[str, str]]] = {}
 
@@ -158,7 +184,7 @@ def _cmd_list() -> None:
         TagFilters=[{"Key": TAG_MANAGED, "Values": ["true"]}],
         ResourcesPerPage=100,
     ):
-        for r in page.get("ResourceTagList", []):
+        for r in page.get("ResourceTagMappingList", []):
             arn = r.get("ResourceARN", "")
             tags = {t["Key"]: t["Value"] for t in r.get("Tags", [])}
             svc = tags.get(TAG_SERVICE, "?")
@@ -180,6 +206,7 @@ def _cmd_list() -> None:
 
 
 def _cmd_create(platform_yaml_path: str) -> None:
+    _check_pulumi_cli()
     config = _require_config()
     path = Path(platform_yaml_path)
     if not path.is_absolute():
@@ -200,18 +227,18 @@ def _cmd_create(platform_yaml_path: str) -> None:
         "PLATFORM_YAML_PATH": str(path.resolve()),
         "PULUMI_BACKEND_URL": backend_url,
     }
-    # Select or create stack
+    # Select or create stack (use Pulumi CLI binary, not python -m pulumi)
+    # Suppress stderr for select so we don't print "error: no stack named ..." before creating it
     select = _run(
-        [sys.executable, "-m", "pulumi", "stack", "select", stack, "-C", "devops"],
+        ["pulumi", "stack", "select", stack, "-C", "devops"],
         env=env,
         check=False,
+        stderr=subprocess.DEVNULL,
     )
     if select.returncode != 0:
         kms = KMS_SECRETS_PROVIDER_TEMPLATE.format(region=region)
         _run(
             [
-                sys.executable,
-                "-m",
                 "pulumi",
                 "stack",
                 "init",
@@ -224,11 +251,11 @@ def _cmd_create(platform_yaml_path: str) -> None:
             env=env,
         )
     _run(
-        [sys.executable, "-m", "pulumi", "config", "set", "aws:region", region, "-C", "devops"],
+        ["pulumi", "config", "set", "aws:region", region, "-C", "devops"],
         env=env,
     )
     print(f"Provisioning infrastructure for service '{service_name}'...")
-    _run([sys.executable, "-m", "pulumi", "up", "-C", "devops", "-y"], env=env)
+    _run(["pulumi", "up", "-C", "devops", "-y"], env=env)
     print(f"Service '{service_name}' provisioned. URL: https://{service_name}.althq-dev.com (if DNS is configured)")
 
 
@@ -236,6 +263,7 @@ def _cmd_create(platform_yaml_path: str) -> None:
 
 
 def _cmd_destroy(service_name: str) -> None:
+    _check_pulumi_cli()
     config = _require_config()
     stack = _stack_name(service_name, config)
     backend_url = config["backend_url"]
@@ -246,7 +274,7 @@ def _cmd_destroy(service_name: str) -> None:
 
     env = {"PULUMI_BACKEND_URL": backend_url}
     select = _run(
-        [sys.executable, "-m", "pulumi", "stack", "select", stack, "-C", "devops"],
+        ["pulumi", "stack", "select", stack, "-C", "devops"],
         env=env,
         check=False,
     )
@@ -257,9 +285,9 @@ def _cmd_destroy(service_name: str) -> None:
     if confirm.strip().lower() != "y":
         print("Cancelled.")
         sys.exit(0)
-    _run([sys.executable, "-m", "pulumi", "destroy", "-C", "devops", "-y"], env=env)
+    _run(["pulumi", "destroy", "-C", "devops", "-y"], env=env)
     rm = _run(
-        [sys.executable, "-m", "pulumi", "stack", "rm", stack, "-C", "devops", "--yes"],
+        ["pulumi", "stack", "rm", stack, "-C", "devops", "--yes"],
         env=env,
         check=False,
     )

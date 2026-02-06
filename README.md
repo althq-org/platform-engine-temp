@@ -40,7 +40,7 @@ The CLI lets you manage infrastructure without dealing with infrastructure tooli
 uv run platform setup
 ```
 
-You will need: 1) AWS credentials (e.g. `aws sso login`), 2) S3 URI for state storage (e.g. `s3://your-account-pulumi-backend-software`), 3) default AWS region. These are stored in `.platform-engine/config.yaml` (gitignored).
+You will need AWS credentials (e.g. `aws sso login`). S3 state URI and region default to dev (`s3://470935583836-pulumi-backend-software`, `us-west-2`); press Enter to accept or type a value to override. Stored in `.platform-engine/config.yaml` (gitignored).
 
 **Then use:**
 
@@ -50,7 +50,7 @@ You will need: 1) AWS credentials (e.g. `aws sso login`), 2) S3 URI for state st
 | `uv run platform create <path>` | Provision infrastructure from a platform.yaml (path can be a fixture or another project) |
 | `uv run platform destroy <service-name>` | Remove all infrastructure for that service (prompts to confirm) |
 
-You only need to give your intent: list, create, or destroy. Stack selection, config, and state storage are handled for you. **Note:** `platform list` only needs AWS credentials (no setup). Setup is required for `create` and `destroy`.
+You only need to give your intent: list, create, or destroy. Stack selection, config, and state storage are handled for you. **Note:** `platform list` only needs AWS credentials (no setup). Setup is required for `create` and `destroy`. For `create` and `destroy` you must have the [Pulumi CLI](https://www.pulumi.com/docs/install/) on your PATH.
 
 ## Development (uv)
 

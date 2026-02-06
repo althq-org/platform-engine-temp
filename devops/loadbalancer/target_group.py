@@ -11,12 +11,12 @@ def create_target_group(
     vpc_id: str,
     aws_provider: pulumi_aws.Provider,
 ) -> pulumi_aws.lb.TargetGroup:
-    """Create target group on port 80 with health check path from config."""
+    """Create target group on container port with health check path from config."""
     name = f"{config.service_name}-tg"[:32]
     return pulumi_aws.lb.TargetGroup(
         f"{config.service_name}_tg",
         name=name,
-        port=80,
+        port=config.container_port,
         protocol="HTTP",
         vpc_id=vpc_id,
         target_type="ip",

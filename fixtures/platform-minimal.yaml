@@ -1,0 +1,17 @@
+# Minimal platform.yaml for testing the platform CLI (create / destroy).
+# Use with: uv run platform create fixtures/platform-minimal.yaml
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: platform-engine-test
+  description: Test service for platform-engine-temp CLI
+spec:
+  compute:
+    port: 80
+    cpu: 256
+    memory: 512
+    instances:
+      min: 1
+    healthCheck:
+      path: /health
+  # No secrets for minimal test
