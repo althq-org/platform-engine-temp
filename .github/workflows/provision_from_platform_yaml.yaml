@@ -129,7 +129,9 @@ jobs:
         env:
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          uv run pulumi stack select "$STACK_NAME" -C devops
           uv run pulumi config set aws:region ${{ inputs.aws_region }} -C devops
 
       - name: Export secrets from platform.yaml
@@ -169,15 +171,21 @@ jobs:
           AWS_REGION: ${{ inputs.aws_region }}
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          uv run pulumi stack select "$STACK_NAME" -C devops
           uv run pulumi up --yes --non-interactive -C devops
 
       - name: Get Pulumi outputs
         id: pulumi_outputs
         working-directory: engine
+        env:
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          echo "Fetching Pulumi stack outputs..."
+          echo "Fetching Pulumi stack outputs for $STACK_NAME..."
+          uv run pulumi stack select "$STACK_NAME" -C devops
           OUTPUTS_JSON=$(uv run pulumi stack output --json -C devops 2>&1)
           echo "Raw outputs: $OUTPUTS_JSON"
           
