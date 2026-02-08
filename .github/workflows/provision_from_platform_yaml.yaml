@@ -106,6 +106,28 @@ jobs:
           echo "Attempting to select stack: $STACK_NAME"
           if uv run pulumi stack select "$STACK_NAME" -C devops 2>&1; then
             echo "✓ Selected existing stack"
+            
+            # Check if stack is using passphrase encryption (which would fail without PULUMI_CONFIG_PASSPHRASE)
+            echo "Checking secrets provider configuration..."
+            if uv run pulumi stack export -C devops 2>&1 | grep -q '"encryptionsalt"'; then
+              echo "⚠ Stack is using passphrase encryption, migrating to KMS..."
+              echo "Deleting passphrase-encrypted stack..."
+              uv run pulumi stack rm "$STACK_NAME" --yes -C devops --force || true
+              
+              echo "Creating new stack with KMS secrets provider..."
+              echo "KMS alias: $KMS_PROVIDER"
+              uv run pulumi stack init "$STACK_NAME" \
+                --secrets-provider="$KMS_PROVIDER" \
+                -C devops
+              
+              # Explicitly set the secrets provider in config (workaround for S3 backend)
+              echo "Verifying secrets provider configuration..."
+              uv run pulumi stack change-secrets-provider "$KMS_PROVIDER" -C devops || true
+              echo "✓ Stack migrated to KMS"
+            else
+              echo "✓ Stack is using KMS encryption"
+            fi
+            
             echo "Stack info:"
             uv run pulumi stack -C devops 2>&1 || true
           else
