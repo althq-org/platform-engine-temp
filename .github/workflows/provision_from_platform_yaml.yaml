@@ -101,11 +101,22 @@ jobs:
         run: |
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          # Try to select existing stack, or create new one with KMS secrets provider
-          uv run pulumi stack select "$STACK_NAME" -C devops 2>/dev/null || \
+          
+          echo "Attempting to select stack: $STACK_NAME"
+          if uv run pulumi stack select "$STACK_NAME" -C devops 2>&1; then
+            echo "✓ Selected existing stack"
+            echo "Stack info:"
+            uv run pulumi stack -C devops 2>&1 || true
+          else
+            echo "Stack does not exist, creating with KMS secrets provider"
+            echo "KMS alias: awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}"
             uv run pulumi stack init "$STACK_NAME" \
               --secrets-provider="awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}" \
               -C devops
+            echo "✓ Stack created"
+            echo "Stack info:"
+            uv run pulumi stack -C devops 2>&1 || true
+          fi
 
       - name: Set Pulumi config
         working-directory: engine
