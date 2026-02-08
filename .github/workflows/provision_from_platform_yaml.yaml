@@ -125,7 +125,8 @@ jobs:
           uv run pulumi stack export -C devops > "$STACK_EXPORT_FILE" 2>&1
           
           # Use Python script to update YAML with KMS metadata
-          python3 engine/scripts/ensure_kms_metadata.py "$STACK_EXPORT_FILE" "engine/$STACK_YAML"
+          # Note: We're already in the 'engine' working directory
+          python3 scripts/ensure_kms_metadata.py "$STACK_EXPORT_FILE" "$STACK_YAML"
           
           # Cleanup
           rm -f "$STACK_EXPORT_FILE"
