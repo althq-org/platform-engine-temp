@@ -116,6 +116,18 @@ jobs:
           
           echo "✓ Selected stack: $STACK_NAME"
 
+      - name: Update stack before destroy
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          echo "🔄 Updating stack to apply latest resource properties (e.g. force_delete)..."
+          uv run pulumi up --yes --non-interactive --skip-preview -C devops
+          echo "✓ Stack updated successfully"
+
       - name: Pulumi destroy
         working-directory: engine
         env:
