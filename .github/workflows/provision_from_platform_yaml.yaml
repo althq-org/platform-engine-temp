@@ -58,10 +58,19 @@ jobs:
           path: service
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: |
+          python3 -m pip install PyYAML
+          python3 -c "import yaml; print('PyYAML OK')"
+
       - name: Get service name from platform.yaml
         id: service_name
         run: |
-          python3 -m pip install pyyaml -q
           SERVICE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))['metadata']['name'])")
           echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_OUTPUT
           echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
@@ -71,11 +80,6 @@ jobs:
         with:
           aws-region: ${{ inputs.aws_region }}
           role-to-assume: arn:aws:iam::${{ inputs.aws_acct_id }}:role/platform_engine_temp_workflows
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
 
       - name: Install uv
         run: |
@@ -115,7 +119,6 @@ jobs:
         env:
           ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
-          python3 -m pip install pyyaml -q
           # Read which secrets this service needs from platform.yaml
           REQUIRED_SECRETS=$(python3 -c "
           import yaml
