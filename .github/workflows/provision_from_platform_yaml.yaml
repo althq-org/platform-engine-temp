@@ -115,6 +115,7 @@ jobs:
         env:
           ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
+          pip install pyyaml -q
           # Read which secrets this service needs from platform.yaml
           REQUIRED_SECRETS=$(python3 -c "
           import yaml
