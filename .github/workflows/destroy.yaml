@@ -115,6 +115,10 @@ jobs:
           fi
           
           echo "✓ Selected stack: $STACK_NAME"
+          
+          # Ensure local stack YAML has KMS metadata from S3 state
+          echo "Ensuring local stack YAML has KMS secrets provider metadata..."
+          python3 scripts/ensure_kms_metadata.py devops "$STACK_NAME"
 
       - name: Update stack before destroy
         working-directory: engine
@@ -135,7 +139,12 @@ jobs:
           AWS_REGION: ${{ inputs.aws_region }}
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
         run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          
+          # Ensure KMS metadata is still present before destroy
+          python3 scripts/ensure_kms_metadata.py devops "$STACK_NAME"
+          
           echo "🗑️ Destroying all resources for ${{ steps.service_name.outputs.service_name }}..."
           uv run pulumi destroy --yes --non-interactive -C devops
 
