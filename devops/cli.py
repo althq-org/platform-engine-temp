@@ -13,7 +13,8 @@ import yaml
 
 CONFIG_DIR = ".platform-engine"
 CONFIG_FILENAME = "config.yaml"
-TAG_MANAGED = "platform-engine-managed"
+TAG_MANAGED = "managed-by"
+TAG_MANAGED_VALUE = "platform-engine"
 TAG_SERVICE = "service"
 DEFAULT_STACK_PREFIX = "dev"
 # Dev-only: hardcoded backend and region (matches GitHub workflows and admin-console)
@@ -181,7 +182,7 @@ def _cmd_list() -> None:
 
     paginator = client.get_paginator("get_resources")
     for page in paginator.paginate(
-        TagFilters=[{"Key": TAG_MANAGED, "Values": ["true"]}],
+        TagFilters=[{"Key": TAG_MANAGED, "Values": [TAG_MANAGED_VALUE]}],
         ResourcesPerPage=100,
     ):
         for r in page.get("ResourceTagMappingList", []):
@@ -194,7 +195,7 @@ def _cmd_list() -> None:
             services[svc].append({"arn": arn, "type": resource_type})
 
     if not services:
-        print("No platform-engine-managed resources found.")
+        print("No platform-engine managed resources found.")
         return
     for name in sorted(services.keys()):
         print(f"\n{name}")

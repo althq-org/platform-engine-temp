@@ -69,7 +69,7 @@ def create_aws_provider(service_name: str, region: str) -> pulumi_aws.Provider:
         default_tags=pulumi_aws.ProviderDefaultTagsArgs(
             tags={
                 "service": service_name,
-                "platform-engine-managed": "true",
+                "managed-by": "platform-engine",
             }
         ),
     )
