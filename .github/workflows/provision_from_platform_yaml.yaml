@@ -61,7 +61,7 @@ jobs:
       - name: Get service name from platform.yaml
         id: service_name
         run: |
-          pip install pyyaml -q
+          python3 -m pip install pyyaml -q
           SERVICE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))['metadata']['name'])")
           echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_OUTPUT
           echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
@@ -115,7 +115,7 @@ jobs:
         env:
           ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
-          pip install pyyaml -q
+          python3 -m pip install pyyaml -q
           # Read which secrets this service needs from platform.yaml
           REQUIRED_SECRETS=$(python3 -c "
           import yaml
