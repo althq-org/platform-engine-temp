@@ -106,30 +106,6 @@ jobs:
           echo "Attempting to select stack: $STACK_NAME"
           if uv run pulumi stack select "$STACK_NAME" -C devops 2>&1; then
             echo "✓ Selected existing stack"
-            
-            # Check if stack is using passphrase encryption (which would fail without PULUMI_CONFIG_PASSPHRASE)
-            echo "Checking secrets provider configuration..."
-            if uv run pulumi stack export -C devops 2>&1 | grep -q '"encryptionsalt"'; then
-              echo "⚠ Stack is using passphrase encryption, migrating to KMS..."
-              echo "Deleting passphrase-encrypted stack..."
-              uv run pulumi stack rm "$STACK_NAME" --yes -C devops --force || true
-              
-              echo "Creating new stack with KMS secrets provider..."
-              echo "KMS alias: $KMS_PROVIDER"
-              uv run pulumi stack init "$STACK_NAME" \
-                --secrets-provider="$KMS_PROVIDER" \
-                -C devops
-              
-              # Explicitly set the secrets provider in config (workaround for S3 backend)
-              echo "Verifying secrets provider configuration..."
-              uv run pulumi stack change-secrets-provider "$KMS_PROVIDER" -C devops || true
-              echo "✓ Stack migrated to KMS"
-            else
-              echo "✓ Stack is using KMS encryption"
-            fi
-            
-            echo "Stack info:"
-            uv run pulumi stack -C devops 2>&1 || true
           else
             echo "Stack does not exist, creating with KMS secrets provider"
             echo "KMS alias: $KMS_PROVIDER"
@@ -137,14 +113,77 @@ jobs:
               --secrets-provider="$KMS_PROVIDER" \
               -C devops
             echo "✓ Stack created"
-            
-            # Explicitly set the secrets provider in config (workaround for S3 backend)
-            echo "Verifying secrets provider configuration..."
-            uv run pulumi stack change-secrets-provider "$KMS_PROVIDER" -C devops || true
-            
-            echo "Stack info:"
-            uv run pulumi stack -C devops 2>&1 || true
           fi
+          
+          # CRITICAL: Ensure local Pulumi.<stack>.yaml has KMS metadata
+          # Without this, Pulumi falls back to expecting PULUMI_CONFIG_PASSPHRASE
+          echo "Ensuring local stack YAML has KMS secrets provider metadata..."
+          STACK_YAML="devops/Pulumi.$STACK_NAME.yaml"
+          
+          # Export stack to get secrets provider info from S3 state
+          STACK_EXPORT=$(uv run pulumi stack export -C devops 2>&1)
+          
+          # Extract KMS provider URL and encrypted key from stack export
+          KMS_URL=$(echo "$STACK_EXPORT" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          sp = data.get('deployment', {}).get('secrets_providers', {})
+          if sp.get('type') == 'cloud':
+              print(sp['state']['url'])
+          " 2>/dev/null || echo "")
+          
+          KMS_KEY=$(echo "$STACK_EXPORT" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          sp = data.get('deployment', {}).get('secrets_providers', {})
+          if sp.get('type') == 'cloud':
+              print(sp['state']['encryptedkey'])
+          " 2>/dev/null || echo "")
+          
+          if [ -n "$KMS_URL" ] && [ -n "$KMS_KEY" ]; then
+            echo "Found KMS configuration in S3 state:"
+            echo "  Provider: $KMS_URL"
+            echo "  Encrypted key: ${KMS_KEY:0:50}..."
+            
+            # Read existing config from local YAML (if any)
+            if [ -f "$STACK_YAML" ]; then
+              EXISTING_CONFIG=$(python3 -c "
+              import yaml, sys
+              try:
+                  with open('$STACK_YAML', 'r') as f:
+                      data = yaml.safe_load(f) or {}
+                      config = data.get('config', {})
+                      print(yaml.dump({'config': config}) if config else '')
+              except:
+                  pass
+              " 2>/dev/null || echo "")
+            else
+              EXISTING_CONFIG=""
+            fi
+            
+            # Write new YAML with KMS metadata + existing config
+            python3 -c "
+            import yaml
+            data = {
+                'secretsprovider': '$KMS_URL',
+                'encryptedkey': '$KMS_KEY'
+            }
+            if '''$EXISTING_CONFIG''':
+                existing = yaml.safe_load('''$EXISTING_CONFIG''')
+                if existing and 'config' in existing:
+                    data['config'] = existing['config']
+            with open('$STACK_YAML', 'w') as f:
+                yaml.dump(data, f, default_flow_style=False)
+            print('✓ Updated local stack YAML with KMS metadata')
+            "
+          else
+            echo "⚠ Warning: Could not extract KMS configuration from stack"
+            echo "Stack export output:"
+            echo "$STACK_EXPORT" | head -20
+          fi
+          
+          echo "Stack info:"
+          uv run pulumi stack -C devops 2>&1 || true
 
       - name: Set Pulumi config
         working-directory: engine
