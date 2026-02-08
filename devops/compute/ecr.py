@@ -10,11 +10,15 @@ def create_ecr_repository(
     service_name: str,
     aws_provider: pulumi_aws.Provider,
 ) -> pulumi_aws.ecr.Repository:
-    """Create ECR repository with lifecycle policy (keep last 5 images)."""
+    """Create ECR repository with lifecycle policy (keep last 5 images).
+
+    force_delete=True allows deletion even when images exist, required for destroy workflow.
+    """
     ecr_repo = pulumi_aws.ecr.Repository(
         f"{service_name}_ecr",
         name=service_name,
         image_tag_mutability="MUTABLE",
+        force_delete=True,  # Allow deletion even when images exist
         image_scanning_configuration=pulumi_aws.ecr.RepositoryImageScanningConfigurationArgs(
             scan_on_push=False,
         ),
