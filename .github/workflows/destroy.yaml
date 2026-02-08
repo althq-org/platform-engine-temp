@@ -88,6 +88,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install PyYAML
+        run: python3 -m pip install PyYAML
+
       - name: Install uv
         run: |
           curl -LsSf https://astral.sh/uv/install.sh | sh
