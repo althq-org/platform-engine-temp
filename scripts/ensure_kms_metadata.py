@@ -101,9 +101,16 @@ def write_stack_yaml(yaml_path: Path, kms_url: str, encrypted_key: str, existing
     with open(yaml_path, 'w') as f:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False)
     
+    # Extract KMS alias from URL for safe logging (everything else is masked)
+    kms_alias = "unknown"
+    if "alias/" in kms_url:
+        alias_part = kms_url.split("alias/")[1].split("?")[0]
+        kms_alias = f"alias/{alias_part}"
+    
     print(f"✓ Updated {yaml_path} with KMS metadata")
-    print(f"  Provider: {kms_url}")
-    print(f"  Encrypted key: {encrypted_key[:50]}...")
+    print(f"  KMS Alias: {kms_alias}")
+    print(f"  Encrypted key: {encrypted_key[:12]}... (masked)")
+    print(f"  Config preserved: {'Yes' if existing_config and 'config' in existing_config else 'No'}")
 
 
 def main():
