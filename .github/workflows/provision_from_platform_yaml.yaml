@@ -101,6 +101,7 @@ jobs:
         run: |
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          KMS_PROVIDER="awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}"
           
           echo "Attempting to select stack: $STACK_NAME"
           if uv run pulumi stack select "$STACK_NAME" -C devops 2>&1; then
@@ -109,11 +110,16 @@ jobs:
             uv run pulumi stack -C devops 2>&1 || true
           else
             echo "Stack does not exist, creating with KMS secrets provider"
-            echo "KMS alias: awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}"
+            echo "KMS alias: $KMS_PROVIDER"
             uv run pulumi stack init "$STACK_NAME" \
-              --secrets-provider="awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}" \
+              --secrets-provider="$KMS_PROVIDER" \
               -C devops
             echo "✓ Stack created"
+            
+            # Explicitly set the secrets provider in config (workaround for S3 backend)
+            echo "Verifying secrets provider configuration..."
+            uv run pulumi stack change-secrets-provider "$KMS_PROVIDER" -C devops || true
+            
             echo "Stack info:"
             uv run pulumi stack -C devops 2>&1 || true
           fi
