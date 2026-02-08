@@ -127,6 +127,16 @@ jobs:
           python3 scripts/ensure_kms_metadata.py "$STACK_EXPORT_FILE" "$STACK_YAML"
           rm -f "$STACK_EXPORT_FILE"
 
+      - name: Set Pulumi config
+        working-directory: engine
+        env:
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          uv run pulumi stack select "$STACK_NAME" -C devops
+          uv run pulumi config set aws:region ${{ inputs.aws_region }} -C devops
+
       - name: Update stack before destroy
         working-directory: engine
         env:
