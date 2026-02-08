@@ -171,9 +171,18 @@ jobs:
         working-directory: engine
         run: |
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          ECR_URI=$(uv run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecr_repository_uri // empty')
-          CLUSTER=$(uv run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_cluster_name // empty')
-          SERVICE=$(uv run pulumi stack output --json -C devops 2>/dev/null | jq -r '.ecs_service_name // empty')
+          echo "Fetching Pulumi stack outputs..."
+          OUTPUTS_JSON=$(uv run pulumi stack output --json -C devops 2>&1)
+          echo "Raw outputs: $OUTPUTS_JSON"
+          
+          ECR_URI=$(echo "$OUTPUTS_JSON" | jq -r '.ecr_repository_uri // empty')
+          CLUSTER=$(echo "$OUTPUTS_JSON" | jq -r '.ecs_cluster_name // empty')
+          SERVICE=$(echo "$OUTPUTS_JSON" | jq -r '.ecs_service_name // empty')
+          
+          echo "ECR_URI=$ECR_URI"
+          echo "CLUSTER=$CLUSTER"
+          echo "SERVICE=$SERVICE"
+          
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
           echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
           echo "service=$SERVICE" >> $GITHUB_OUTPUT
@@ -185,6 +194,7 @@ jobs:
       - name: Build and push Docker image
         run: |
           ECR_URI="${{ steps.pulumi_outputs.outputs.ecr_uri }}"
+          echo "Building and pushing Docker image to $ECR_URI"
           docker build -t "$ECR_URI:latest" ./service
           docker push "$ECR_URI:latest"
 
