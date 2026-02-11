@@ -19,6 +19,7 @@ class SharedInfrastructure:
     listener_443_arn: str
     zone_id: str
     zone_name: str
+    account_id: str
     cf_provider: pulumi_cloudflare.Provider
 
 
@@ -73,6 +74,9 @@ def lookup_shared_infrastructure(
         zone_id=cf_zone_id_param.value,
         opts=pulumi.InvokeOptions(provider=cf_provider),
     )
+    # account.id can be typed as a method in stubs; resolve to str at runtime
+    _account_id = getattr(cf_zone.account, "id", "")
+    account_id: str = str(_account_id() if callable(_account_id) else _account_id)
 
     return SharedInfrastructure(
         vpc_id=vpc.id,
@@ -83,5 +87,6 @@ def lookup_shared_infrastructure(
         listener_443_arn=listener_443.arn,
         zone_id=cf_zone.id,
         zone_name=cf_zone.name,
+        account_id=account_id,
         cf_provider=cf_provider,
     )

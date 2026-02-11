@@ -1,7 +1,7 @@
 """
 Platform engine: provisions one service from platform.yaml.
 Uses shared VPC, external ALB, 443 listener; creates ECR, ECS cluster, target group,
-listener rule, Cloudflare DNS. HTTPS via existing ACM wildcard + Cloudflare.
+listener rule, Cloudflare DNS, Cloudflare Zero Trust Access. HTTPS via existing ACM wildcard + Cloudflare.
 """
 
 import os
@@ -16,6 +16,7 @@ from devops.config import create_aws_provider, load_platform_config
 from devops.iam.roles import create_task_roles
 from devops.loadbalancer.listener_rule import create_listener_rule
 from devops.loadbalancer.target_group import create_target_group
+from devops.networking.cloudflare_access import create_access_application
 from devops.networking.dns import create_dns_record
 from devops.networking.security_groups import create_ecs_security_group
 from devops.shared.lookups import lookup_shared_infrastructure
@@ -49,6 +50,12 @@ create_dns_record(
     config.service_name,
     infra.alb_dns_name,
     infra.zone_id,
+    infra.cf_provider,
+)
+create_access_application(
+    config.service_name,
+    infra.zone_name,
+    infra.account_id,
     infra.cf_provider,
 )
 
