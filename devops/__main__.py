@@ -54,6 +54,7 @@ create_dns_record(
 )
 create_access_application(
     config.service_name,
+    infra.zone_id,
     infra.zone_name,
     infra.account_id,
     infra.cf_provider,

@@ -1,8 +1,8 @@
-"""Cloudflare Zero Trust Access (IDP + Policy + Application) per service.
+"""Cloudflare Zero Trust Access (policy + application) per service.
 
-Follows the same patterns as platform/infra/product/cloudflare/ for
-ZeroTrustAccessIdentityProvider, ZeroTrustAccessPolicy, and
-ZeroTrustAccessApplication.
+Reuses the existing Google OAuth identity provider (same as althq-services):
+looks up by name "{environment} althq-frontend Pages Previews", then creates
+only the per-service Access policy and Access application. No client_id/secret needed.
 """
 
 import pulumi
@@ -14,32 +14,41 @@ def _sanitize_resource_name(service_name: str) -> str:
     return service_name.replace(".", "_").replace("/", "_")
 
 
+def _get_environment() -> str:
+    """Derive environment from Pulumi stack name (e.g. dev.service.us-west-2 -> dev)."""
+    stack = pulumi.get_stack()
+    return stack.split(".")[0] if "." in stack else "dev"
+
+
 def create_access_application(
     service_name: str,
+    zone_id: str,
     zone_name: str,
     account_id: str,
     cf_provider: pulumi_cloudflare.Provider,
 ) -> pulumi_cloudflare.ZeroTrustAccessApplication:
-    """Create Cloudflare Zero Trust IDP, policy, and access app for a platform service.
+    """Create Cloudflare Zero Trust policy and access app for a platform service.
 
-    Uses the same google_oauth config namespace and resource patterns as
-    platform/infra/product/cloudflare/ (pgAdmin/Cronicle).
+    Reuses the existing Google OAuth IDP (lookup by name, same as althq-services).
+    No google_oauth client_id/secret config required.
     """
     safe = _sanitize_resource_name(service_name)
-    google_oauth_config = pulumi.Config("google_oauth")
+    environment = _get_environment()
+    idp_name = f"{environment} althq-frontend Pages Previews"
 
-    idp = pulumi_cloudflare.ZeroTrustAccessIdentityProvider(
-        f"{safe}_platform_google_oauth_idp",
+    identity_providers = pulumi_cloudflare.get_zero_trust_access_identity_providers(
         account_id=account_id,
-        config=pulumi_cloudflare.ZeroTrustAccessIdentityProviderConfigArgs(
-            client_id=google_oauth_config.require_secret("client_id"),
-            client_secret=google_oauth_config.require_secret("client_secret"),
-            apps_domain="althq.com",
-        ),
-        name=f"Platform {service_name}",
-        type="google-apps",
-        opts=pulumi.ResourceOptions(provider=cf_provider),
+        zone_id=zone_id,
+        opts=pulumi.InvokeOptions(provider=cf_provider),
     )
+    matching = [idp for idp in identity_providers.results if idp.name == idp_name]
+    if not matching:
+        raise SystemExit(
+            f"Cloudflare Zero Trust: no identity provider named '{idp_name}'. "
+            "Create it in the Cloudflare dashboard or another stack (e.g. platform/infra/product)."
+        )
+    _raw_id = getattr(matching[0], "id", "")
+    idp_id: str = str(_raw_id() if callable(_raw_id) else _raw_id)
 
     policy = pulumi_cloudflare.ZeroTrustAccessPolicy(
         f"{safe}_platform_access_policy",
@@ -48,10 +57,8 @@ def create_access_application(
         decision="allow",
         includes=[
             pulumi_cloudflare.ZeroTrustAccessPolicyIncludeArgs(
-                login_method=(
-                    pulumi_cloudflare.ZeroTrustAccessPolicyIncludeLoginMethodArgs(
-                        id=idp.id,
-                    )
+                login_method=pulumi_cloudflare.ZeroTrustAccessPolicyIncludeLoginMethodArgs(
+                    id=idp_id,
                 ),
             ),
         ],
@@ -72,7 +79,7 @@ def create_access_application(
         http_only_cookie_attribute=True,
         same_site_cookie_attribute="lax",
         account_id=account_id,
-        allowed_idps=[idp.id],
+        allowed_idps=[idp_id],
         app_launcher_visible=False,
         auto_redirect_to_identity=True,
         policies=[
