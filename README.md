@@ -72,6 +72,10 @@ These are defined as **script entry points** in `pyproject.toml` under `[project
 - `scripts/check_workflow.sh` – Poll GitHub Actions run until complete; on failure, show failed logs.
 - `scripts/check_endpoint.sh` – Test HTTPS endpoint with retries.
 
+## Organization and design
+
+Code is organized by **function/layer** (compute, networking, IAM, loadbalancer, etc.), not by vendor. Provisioning is **capability-based**: the engine runs only the capabilities implied by `platform.yaml` (today: ECS); the spec is the contract. For design rationale and decisions, see [Design decisions](docs/design-decisions.md).
+
 ## Stack naming
 
 One stack per service per env: `{stack}.{service_name}.{region}` (e.g. `dev.my-ecs-service.us-west-2`). The workflow creates the stack if it does not exist.

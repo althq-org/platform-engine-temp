@@ -5,9 +5,12 @@ import os
 from pathlib import Path
 from typing import Any
 
+import jsonschema
 import pulumi
 import pulumi_aws
 import yaml
+
+from devops.spec.validator import validate_platform_spec
 
 
 @dataclass
@@ -31,6 +34,11 @@ class PlatformConfig:
 
         with open(path, encoding="utf-8") as f:
             platform: dict[str, Any] = yaml.safe_load(f)
+
+        try:
+            validate_platform_spec(platform)
+        except jsonschema.ValidationError as e:
+            raise SystemExit(str(e)) from e
 
         metadata = platform["metadata"]
         spec = platform["spec"]

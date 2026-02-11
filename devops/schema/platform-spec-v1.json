@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "platform.althq.com/v1",
+  "title": "Platform Service Spec v1",
+  "description": "Schema for platform.yaml (apiVersion: platform.althq.com/v1)",
+  "type": "object",
+  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "additionalProperties": true,
+  "properties": {
+    "apiVersion": {
+      "type": "string",
+      "const": "platform.althq.com/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Service"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Service name (used for DNS, stack names, etc.)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional human-readable description"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "required": ["compute"],
+      "additionalProperties": true,
+      "properties": {
+        "compute": {
+          "type": "object",
+          "description": "Compute configuration (e.g. ECS). Required for v1.",
+          "additionalProperties": true,
+          "properties": {
+            "type": {
+              "type": "string",
+              "default": "ecs",
+              "description": "Compute type; default is ecs"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535,
+              "description": "Container port"
+            },
+            "cpu": {
+              "type": "integer",
+              "minimum": 256,
+              "description": "CPU units"
+            },
+            "memory": {
+              "type": "integer",
+              "minimum": 512,
+              "description": "Memory in MiB"
+            },
+            "instances": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "min": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Minimum number of instances"
+                }
+              }
+            },
+            "healthCheck": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Health check path"
+                }
+              }
+            }
+          }
+        },
+        "secrets": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of secret names to inject (values from environment)"
+        }
+      }
+    }
+  }
+}

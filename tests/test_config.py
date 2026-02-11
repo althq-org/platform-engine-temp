@@ -106,6 +106,25 @@ def test_platform_config_file_not_found_from_file() -> None:
         PlatformConfig.from_file("/nonexistent/platform.yaml")
 
 
+def test_platform_config_invalid_spec_fails_validation(tmp_path: Path) -> None:
+    """Test that invalid platform.yaml (fails schema) raises SystemExit."""
+    yaml_content = """
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: ok
+spec:
+  compute: null
+"""
+    yaml_file = tmp_path / "platform.yaml"
+    yaml_file.write_text(yaml_content)
+    mock_config = MagicMock()
+    mock_config.require.return_value = "us-west-2"
+    with patch("devops.config.pulumi.Config", return_value=mock_config), pytest.raises(SystemExit) as exc_info:
+        PlatformConfig.from_file(str(yaml_file))
+    assert "validation failed" in str(exc_info.value).lower()
+
+
 def test_create_aws_provider() -> None:
     """Test AWS provider creation (smoke test; returns Pulumi resource)."""
     with patch("devops.config.pulumi_aws.Provider") as mock_provider:
@@ -115,5 +134,5 @@ def test_create_aws_provider() -> None:
         assert call_kw["region"] == "us-west-2"
         assert call_kw["default_tags"].tags == {
             "service": "my-service",
-            "platform-engine-managed": "true",
+            "managed-by": "platform-engine",
         }

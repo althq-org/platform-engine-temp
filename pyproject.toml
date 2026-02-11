@@ -5,6 +5,7 @@ description = "Reusable workflow + Pulumi engine for provisioning services from 
 requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.34.0",
+    "jsonschema>=4.0.0",
     "pulumi>=3.0",
     "pulumi-aws>=6.0",
     "pulumi-cloudflare>=5.0",

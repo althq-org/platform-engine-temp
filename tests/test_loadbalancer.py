@@ -20,7 +20,7 @@ def test_listener_rule_priority() -> None:
 
 @patch("devops.loadbalancer.target_group.pulumi_aws.lb.TargetGroup")
 def test_create_target_group(mock_tg: MagicMock) -> None:
-    """Target group uses health path and port 80."""
+    """Target group uses health path and container port from config."""
     config = PlatformConfig(
         service_name="my-svc",
         container_port=8080,
@@ -36,7 +36,7 @@ def test_create_target_group(mock_tg: MagicMock) -> None:
     result = create_target_group(config, "vpc-1", aws_provider)
     assert result.arn == "tg-arn"
     call_kw = mock_tg.call_args[1]
-    assert call_kw["port"] == 80
+    assert call_kw["port"] == 8080
     assert call_kw["vpc_id"] == "vpc-1"
     assert call_kw["health_check"].path == "/healthz"
 

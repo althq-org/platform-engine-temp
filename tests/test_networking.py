@@ -24,7 +24,7 @@ def test_create_ecs_security_group(mock_sg: MagicMock) -> None:
     assert call_kw["ingress"][0].cidr_blocks == ["10.0.0.0/16"]
 
 
-@patch("devops.networking.dns.pulumi_cloudflare.Record")
+@patch("devops.networking.dns.pulumi_cloudflare.DnsRecord")
 def test_create_dns_record(mock_record: MagicMock) -> None:
     """DNS CNAME record points to ALB and is proxied."""
     cf_provider = MagicMock()

@@ -37,7 +37,6 @@ def create_access_application(
     idp_name = f"{environment} althq-frontend Pages Previews"
 
     identity_providers = pulumi_cloudflare.get_zero_trust_access_identity_providers(
-        account_id=account_id,
         zone_id=zone_id,
         opts=pulumi.InvokeOptions(provider=cf_provider),
     )
