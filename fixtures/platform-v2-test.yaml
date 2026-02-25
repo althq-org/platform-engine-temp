@@ -1,0 +1,49 @@
+# Scratch fixture for Platform Engine v2 incremental testing.
+# Start with compute only; add storage, cache, database, etc. step by step.
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: platform-v2-test
+  description: Incremental test stack for platform-engine v2
+spec:
+  serviceDiscovery:
+    namespace: platform-v2-test.local
+
+  database:
+    engine: postgres
+    instanceClass: db.t3.micro
+    allocatedStorage: 20
+
+  cache:
+    engine: redis
+    nodeType: cache.t3.micro
+    numNodes: 1
+
+  storage:
+    efs:
+      encrypted: true
+      lifecycle: AFTER_30_DAYS
+      accessPoint:
+        path: /data
+        uid: 1000
+        gid: 1000
+
+  triggers:
+    eventbridge:
+      scheduleGroup: platform-v2-test
+
+  lambda:
+    functions:
+      - name: test-fn
+        image: test-lambda
+        memory: 512
+        timeout: 30
+
+  compute:
+    port: 80
+    cpu: 256
+    memory: 512
+    instances:
+      min: 1
+    healthCheck:
+      path: /health

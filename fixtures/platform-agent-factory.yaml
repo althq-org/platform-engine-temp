@@ -1,0 +1,63 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: agent-factory
+  description: Agent Factory - AI agent provisioning and orchestration platform
+
+spec:
+  compute:
+    type: ecs
+    port: 80
+    cpu: 512
+    memory: 1024
+    instances:
+      min: 1
+    healthCheck:
+      path: /health
+
+  storage:
+    efs:
+      encrypted: true
+      lifecycle: AFTER_30_DAYS
+      accessPoint:
+        path: /agent-factory
+        uid: 1000
+        gid: 1000
+
+  cache:
+    engine: redis
+    nodeType: cache.t3.micro
+    numNodes: 1
+
+  database:
+    engine: postgres
+    instanceClass: db.t3.micro
+    allocatedStorage: 20
+
+  serviceDiscovery:
+    namespace: agents.local
+
+  triggers:
+    webhookGateway: true
+    eventbridge:
+      scheduleGroup: agent-factory
+
+  lambda:
+    functions:
+      - name: pi-chat
+        image: pi-agent-lambda
+        memory: 2048
+        timeout: 120
+      - name: claude-chat
+        image: claude-agent-lambda
+        memory: 2048
+        timeout: 120
+      - name: webhook-gateway
+        image: af-webhook-gateway
+        memory: 512
+        timeout: 30
+
+  secrets:
+    - ANTHROPIC_API_KEY
+    - DIFY_DB_PASSWORD
+    - REDIS_PASSWORD

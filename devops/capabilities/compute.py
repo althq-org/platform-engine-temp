@@ -1,50 +1,42 @@
-"""ECS capability: provision containerized service (ECR, ECS cluster, ALB, DNS, Cloudflare Access)."""
+"""Compute capability: ECS (ECR, cluster, ALB, DNS, Cloudflare Access, task, service)."""
 
-from dataclasses import dataclass
 import os
+from typing import Any
 
 import pulumi
-import pulumi_aws
 
+from devops.capabilities.context import CapabilityContext
+from devops.capabilities.registry import Phase, register
 from devops.compute.ecr import create_ecr_repository
 from devops.compute.ecs_cluster import create_ecs_cluster
 from devops.compute.ecs_service import create_ecs_service
 from devops.compute.ecs_task import create_task_definition
-from devops.config import PlatformConfig
-from devops.iam.roles import create_task_roles
 from devops.loadbalancer.listener_rule import create_listener_rule
 from devops.loadbalancer.target_group import create_target_group
 from devops.networking.cloudflare_access import create_access_application
 from devops.networking.dns import create_dns_record
-from devops.networking.security_groups import create_ecs_security_group
-from devops.shared.lookups import SharedInfrastructure
 
 
-@dataclass
-class EcsOutputs:
-    """Outputs from the ECS capability for Pulumi exports."""
+@register("compute", phase=Phase.COMPUTE)
+def compute_handler(
+    section_config: dict[str, Any],
+    ctx: CapabilityContext,
+) -> None:
+    """Provision ECS path: ECR, cluster, target group, listener rule, DNS, Access, task, service.
 
-    service_url: pulumi.Output[str]
-    ecr_repository_uri: pulumi.Output[str]
-    ecs_cluster_name: pulumi.Output[str]
-    ecs_service_name: pulumi.Output[str]
+    Uses foundation outputs: security_groups.compute, iam.task_role, iam.exec_role.
+    Section_config is ignored; config comes from ctx.config.
+    """
+    config = ctx.config
+    infra = ctx.infra
+    aws_provider = ctx.aws_provider
 
+    security_group = ctx.require("security_groups.compute")
+    task_role = ctx.require("iam.task_role")
+    exec_role = ctx.require("iam.exec_role")
 
-def provision_ecs(
-    config: PlatformConfig,
-    infra: SharedInfrastructure,
-    aws_provider: pulumi_aws.Provider,
-) -> EcsOutputs:
-    """Provision full ECS path: ECR, cluster, SG, IAM, target group, listener rule, DNS, Access, task, service."""
     ecr_repo = create_ecr_repository(config.service_name, aws_provider)
     cluster = create_ecs_cluster(config.service_name, aws_provider)
-    security_group = create_ecs_security_group(
-        config.service_name,
-        infra.vpc_id,
-        infra.vpc_cidr,
-        aws_provider,
-    )
-    task_role, exec_role = create_task_roles(config.service_name, aws_provider)
     target_group = create_target_group(config, infra.vpc_id, aws_provider)
     listener_rule = create_listener_rule(
         config,
@@ -74,7 +66,9 @@ def provision_ecs(
             container_secrets.append({"name": name, "value": value})
             pulumi.log.info(f"Secret '{name}' will be passed to container")
         else:
-            pulumi.log.warn(f"Secret '{name}' declared in platform.yaml but not found in environment")
+            pulumi.log.warn(
+                f"Secret '{name}' declared in platform.yaml but not found in environment"
+            )
 
     task_def = create_task_definition(
         config,
@@ -95,10 +89,10 @@ def provision_ecs(
         aws_provider=aws_provider,
     )
 
-    service_url = pulumi.Output.from_input(f"https://{config.service_name}.{infra.zone_name}")
-    return EcsOutputs(
-        service_url=service_url,
-        ecr_repository_uri=ecr_repo.repository_url,
-        ecs_cluster_name=cluster.name,
-        ecs_service_name=ecs_service.name,
+    service_url = pulumi.Output.from_input(
+        f"https://{config.service_name}.{infra.zone_name}"
     )
+    ctx.export("service_url", service_url)
+    ctx.export("ecr_repository_uri", ecr_repo.repository_url)
+    ctx.export("ecs_cluster_name", cluster.name)
+    ctx.export("ecs_service_name", ecs_service.name)

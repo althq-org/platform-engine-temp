@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from devops.config import PlatformConfig
+from devops.config import ComputeConfig, PlatformConfig
 from devops.loadbalancer.listener_rule import _listener_rule_priority
 from devops.loadbalancer.target_group import create_target_group
 
@@ -23,13 +23,10 @@ def test_create_target_group(mock_tg: MagicMock) -> None:
     """Target group uses health path and container port from config."""
     config = PlatformConfig(
         service_name="my-svc",
-        container_port=8080,
-        health_path="/healthz",
-        cpu="256",
-        memory="512",
-        min_capacity=1,
-        secrets=[],
         region="us-west-2",
+        raw_spec={"compute": {}},
+        compute=ComputeConfig(port=8080, health_path="/healthz", cpu=256, memory=512, min_capacity=1),
+        secrets=[],
     )
     mock_tg.return_value.arn = "tg-arn"
     aws_provider = MagicMock()
@@ -45,13 +42,10 @@ def test_create_listener_rule_priority() -> None:
     """Listener rule priority is computed from service name."""
     config = PlatformConfig(
         service_name="my-svc",
-        container_port=80,
-        health_path="/health",
-        cpu="256",
-        memory="512",
-        min_capacity=1,
-        secrets=[],
         region="us-west-2",
+        raw_spec={"compute": {}},
+        compute=ComputeConfig(port=80, health_path="/health", cpu=256, memory=512, min_capacity=1),
+        secrets=[],
     )
     # create_listener_rule uses pulumi.Output.apply; unit test only priority helper
     priority = _listener_rule_priority(config.service_name)

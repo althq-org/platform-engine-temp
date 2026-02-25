@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from devops.compute.ecr import create_ecr_repository
 from devops.compute.ecs_cluster import create_ecs_cluster
 from devops.compute.ecs_task import _make_container_def
-from devops.config import PlatformConfig
+from devops.config import ComputeConfig, PlatformConfig
 
 
 @patch("devops.compute.ecr.pulumi_aws.ecr.LifecyclePolicy")
@@ -41,13 +41,10 @@ def test_make_container_def() -> None:
     """Container definition JSON has expected env and port."""
     config = PlatformConfig(
         service_name="svc",
-        container_port=8080,
-        health_path="/health",
-        cpu="256",
-        memory="512",
-        min_capacity=1,
-        secrets=[],
         region="us-west-2",
+        raw_spec={"compute": {}},
+        compute=ComputeConfig(port=8080, health_path="/health", cpu=256, memory=512, min_capacity=1),
+        secrets=[],
     )
     json_str = _make_container_def(
         "123456.dkr.ecr.region.amazonaws.com/svc:latest",

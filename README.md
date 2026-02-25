@@ -72,6 +72,19 @@ These are defined as **script entry points** in `pyproject.toml` under `[project
 - `scripts/check_workflow.sh` – Poll GitHub Actions run until complete; on failure, show failed logs.
 - `scripts/check_endpoint.sh` – Test HTTPS endpoint with retries.
 
+## Documentation
+
+Docs live in `docs/` for humans and for the admin console (which can load them from GitHub):
+
+| Doc | Purpose |
+|-----|---------|
+| [Overview](docs/overview.md) | What is the Platform Engine? (new users) |
+| [Capabilities](docs/capabilities.md) | What each spec section does; use for help boxes |
+| [Schema guide](docs/schema-guide.md) | Field meanings and defaults |
+| [Admin console](docs/admin-console.md) | How to load schema and docs from this repo |
+
+The JSON Schema is `devops/schema/platform-spec-v1.json` (validate YAML or drive wizards).
+
 ## Organization and design
 
 Code is organized by **function/layer** (compute, networking, IAM, loadbalancer, etc.), not by vendor. Provisioning is **capability-based**: the engine runs only the capabilities implied by `platform.yaml` (today: ECS); the spec is the contract. For design rationale and decisions, see [Design decisions](docs/design-decisions.md).

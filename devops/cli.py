@@ -260,6 +260,83 @@ def _cmd_create(platform_yaml_path: str) -> None:
     print(f"Service '{service_name}' provisioned. URL: https://{service_name}.althq-dev.com (if DNS is configured)")
 
 
+# --- validate ---
+
+
+def _cmd_validate(platform_yaml_path: str) -> None:
+    """Validate platform.yaml against the schema (no Pulumi or AWS required)."""
+    path = Path(platform_yaml_path)
+    if not path.is_absolute():
+        path = _project_root() / path
+    if not path.exists():
+        print(f"File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    with open(path, encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    try:
+        from devops.spec.validator import validate_platform_spec
+
+        validate_platform_spec(data)
+    except Exception as e:
+        print(f"Validation failed: {e}", file=sys.stderr)
+        sys.exit(1)
+    print("Valid.")
+
+
+# --- preview ---
+
+
+def _cmd_preview(platform_yaml_path: str) -> None:
+    """Show Pulumi preview for the given platform.yaml (stack select/init if needed)."""
+    _check_pulumi_cli()
+    config = _require_config()
+    path = Path(platform_yaml_path)
+    if not path.is_absolute():
+        path = _project_root() / path
+    if not path.exists():
+        print(f"File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    service_name = _service_name_from_yaml(path)
+    stack = _stack_name(service_name, config)
+    backend_url = config["backend_url"]
+    region = config["region"]
+    devops_dir = _project_root() / "devops"
+    if not (devops_dir / "Pulumi.yaml").exists():
+        print("devops/Pulumi.yaml not found. Run this from the platform-engine-temp repo root.", file=sys.stderr)
+        sys.exit(1)
+    env = {
+        "PLATFORM_YAML_PATH": str(path.resolve()),
+        "PULUMI_BACKEND_URL": backend_url,
+    }
+    select = _run(
+        ["pulumi", "stack", "select", stack, "-C", "devops"],
+        env=env,
+        check=False,
+        stderr=subprocess.DEVNULL,
+    )
+    if select.returncode != 0:
+        kms = KMS_SECRETS_PROVIDER_TEMPLATE.format(region=region)
+        _run(
+            [
+                "pulumi",
+                "stack",
+                "init",
+                stack,
+                "--secrets-provider",
+                kms,
+                "-C",
+                "devops",
+            ],
+            env=env,
+        )
+    _run(
+        ["pulumi", "config", "set", "aws:region", region, "-C", "devops"],
+        env=env,
+    )
+    print(f"Preview for service '{service_name}' (stack {stack})...")
+    _run(["pulumi", "preview", "-C", "devops"], env=env)
+
+
 # --- destroy ---
 
 
@@ -308,6 +385,10 @@ def main() -> None:
     sub.add_parser("list", help="List engine-managed resources by service")
     create_p = sub.add_parser("create", help="Provision infrastructure from a platform.yaml")
     create_p.add_argument("platform_yaml", help="Path to platform.yaml (file or fixture)")
+    validate_p = sub.add_parser("validate", help="Validate platform.yaml against schema")
+    validate_p.add_argument("path", help="Path to platform.yaml")
+    preview_p = sub.add_parser("preview", help="Pulumi preview for platform.yaml")
+    preview_p.add_argument("platform_yaml", help="Path to platform.yaml")
     destroy_p = sub.add_parser("destroy", help="Remove all infrastructure for a service")
     destroy_p.add_argument("service_name", help="Service name (from platform.yaml metadata.name)")
     args = parser.parse_args()
@@ -318,6 +399,10 @@ def main() -> None:
         _cmd_list()
     elif args.command == "create":
         _cmd_create(args.platform_yaml)
+    elif args.command == "validate":
+        _cmd_validate(args.path)
+    elif args.command == "preview":
+        _cmd_preview(args.platform_yaml)
     elif args.command == "destroy":
         _cmd_destroy(args.service_name)
     else:

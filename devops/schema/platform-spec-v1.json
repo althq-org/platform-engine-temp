@@ -5,82 +5,50 @@
   "description": "Schema for platform.yaml (apiVersion: platform.althq.com/v1)",
   "type": "object",
   "required": ["apiVersion", "kind", "metadata", "spec"],
-  "additionalProperties": true,
+  "additionalProperties": false,
   "properties": {
-    "apiVersion": {
-      "type": "string",
-      "const": "platform.althq.com/v1"
-    },
-    "kind": {
-      "type": "string",
-      "const": "Service"
-    },
+    "apiVersion": { "type": "string", "const": "platform.althq.com/v1" },
+    "kind": { "type": "string", "const": "Service" },
     "metadata": {
       "type": "object",
       "required": ["name"],
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "name": {
           "type": "string",
-          "minLength": 1,
-          "description": "Service name (used for DNS, stack names, etc.)"
+          "minLength": 2,
+          "maxLength": 63,
+          "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
+          "description": "Service name (DNS-safe, used for stack names, etc.)"
         },
-        "description": {
-          "type": "string",
-          "description": "Optional human-readable description"
-        }
+        "description": { "type": "string", "description": "Optional human-readable description" }
       }
     },
     "spec": {
       "type": "object",
-      "required": ["compute"],
       "additionalProperties": true,
       "properties": {
         "compute": {
           "type": "object",
-          "description": "Compute configuration (e.g. ECS). Required for v1.",
-          "additionalProperties": true,
+          "description": "Compute configuration (e.g. ECS). Optional if other sections are used.",
+          "additionalProperties": false,
           "properties": {
-            "type": {
-              "type": "string",
-              "default": "ecs",
-              "description": "Compute type; default is ecs"
-            },
-            "port": {
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 65535,
-              "description": "Container port"
-            },
-            "cpu": {
-              "type": "integer",
-              "minimum": 256,
-              "description": "CPU units"
-            },
-            "memory": {
-              "type": "integer",
-              "minimum": 512,
-              "description": "Memory in MiB"
-            },
+            "type": { "type": "string", "enum": ["ecs"], "default": "ecs" },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "Container port" },
+            "cpu": { "type": "integer", "minimum": 256, "description": "CPU units" },
+            "memory": { "type": "integer", "minimum": 512, "description": "Memory in MiB" },
             "instances": {
               "type": "object",
-              "additionalProperties": true,
+              "additionalProperties": false,
               "properties": {
-                "min": {
-                  "type": "integer",
-                  "minimum": 0,
-                  "description": "Minimum number of instances"
-                }
+                "min": { "type": "integer", "minimum": 0, "description": "Minimum number of instances" }
               }
             },
             "healthCheck": {
               "type": "object",
-              "additionalProperties": true,
+              "additionalProperties": false,
               "properties": {
-                "path": {
-                  "type": "string",
-                  "description": "Health check path"
-                }
+                "path": { "type": "string", "description": "Health check path" }
               }
             }
           }
@@ -89,6 +57,94 @@
           "type": "array",
           "items": { "type": "string" },
           "description": "List of secret names to inject (values from environment)"
+        },
+        "storage": {
+          "type": "object",
+          "description": "EFS storage configuration",
+          "additionalProperties": false,
+          "properties": {
+            "efs": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "encrypted": { "type": "boolean", "default": true },
+                "lifecycle": { "type": "string", "enum": ["AFTER_7_DAYS", "AFTER_14_DAYS", "AFTER_30_DAYS", "AFTER_90_DAYS"], "default": "AFTER_30_DAYS" },
+                "accessPoint": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "path": { "type": "string", "default": "/data" },
+                    "uid": { "type": "integer", "default": 1000 },
+                    "gid": { "type": "integer", "default": 1000 }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "cache": {
+          "type": "object",
+          "description": "ElastiCache Redis configuration",
+          "additionalProperties": false,
+          "properties": {
+            "engine": { "type": "string", "enum": ["redis"], "default": "redis" },
+            "nodeType": { "type": "string", "default": "cache.t3.micro" },
+            "numNodes": { "type": "integer", "minimum": 1, "default": 1 }
+          }
+        },
+        "database": {
+          "type": "object",
+          "description": "RDS PostgreSQL configuration",
+          "additionalProperties": false,
+          "properties": {
+            "engine": { "type": "string", "enum": ["postgres"], "default": "postgres" },
+            "instanceClass": { "type": "string", "default": "db.t3.micro" },
+            "allocatedStorage": { "type": "integer", "minimum": 20, "default": 20 }
+          }
+        },
+        "serviceDiscovery": {
+          "type": "object",
+          "description": "AWS Cloud Map service discovery configuration",
+          "additionalProperties": false,
+          "properties": {
+            "namespace": { "type": "string", "description": "Private DNS namespace name" }
+          }
+        },
+        "triggers": {
+          "type": "object",
+          "description": "Agent trigger infrastructure (EventBridge, webhooks)",
+          "additionalProperties": false,
+          "properties": {
+            "webhookGateway": { "type": "boolean", "default": false },
+            "eventbridge": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scheduleGroup": { "type": "string", "description": "EventBridge Scheduler group name" }
+              }
+            }
+          }
+        },
+        "lambda": {
+          "type": "object",
+          "description": "Lambda function configuration",
+          "additionalProperties": false,
+          "properties": {
+            "functions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "image"],
+                "properties": {
+                  "name": { "type": "string", "minLength": 1 },
+                  "image": { "type": "string", "minLength": 1 },
+                  "memory": { "type": "integer", "minimum": 128, "default": 2048 },
+                  "timeout": { "type": "integer", "minimum": 1, "default": 120 }
+                }
+              }
+            }
+          }
         }
       }
     }

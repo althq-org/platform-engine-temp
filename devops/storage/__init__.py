@@ -1,0 +1,1 @@
+"""Storage resource modules (EFS)."""
