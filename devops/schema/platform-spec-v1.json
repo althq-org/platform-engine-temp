@@ -215,6 +215,7 @@
           "title": "Database (RDS Postgres)",
           "description": "Creates an RDS PostgreSQL instance in the VPC. Not exposed to the internet. Accessible only from services in the same VPC. Connection details are injected as environment variables.",
           "additionalProperties": false,
+          "required": ["dbName", "dbUsername"],
           "x-order": ["dbName", "dbUsername", "instanceClass", "allocatedStorage", "engine"],
           "properties": {
             "engine": {

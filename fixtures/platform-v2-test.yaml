@@ -13,6 +13,8 @@ spec:
     engine: postgres
     instanceClass: db.t3.micro
     allocatedStorage: 20
+    dbName: platform_v2_test_db
+    dbUsername: platform_v2_admin
 
   cache:
     engine: redis

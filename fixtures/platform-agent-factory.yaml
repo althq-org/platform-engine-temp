@@ -33,6 +33,8 @@ spec:
     engine: postgres
     instanceClass: db.t3.micro
     allocatedStorage: 20
+    dbName: agent_factory_db
+    dbUsername: agent_factory_admin
 
   serviceDiscovery:
     namespace: agents.local
