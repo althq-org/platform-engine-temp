@@ -63,14 +63,14 @@
               "title": "CPU units",
               "minimum": 256,
               "default": 512,
-              "description": "ECS Fargate CPU units. 256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU."
+              "description": "ECS Fargate CPU units. 256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU, 2048 = 2 vCPU."
             },
             "memory": {
               "type": "integer",
               "title": "Memory (MiB)",
               "minimum": 512,
               "default": 1024,
-              "description": "Container memory in MiB. Must be compatible with the chosen CPU units."
+              "description": "Container memory in MiB. Must be compatible with the chosen CPU units (e.g. 512 CPU → 1024–2048 MB, 1024 CPU → 2048–8192 MB)."
             },
             "instances": {
               "type": "object",
@@ -84,14 +84,14 @@
                   "title": "Minimum instances",
                   "minimum": 0,
                   "default": 1,
-                  "description": "Minimum number of running tasks. Set to 0 to allow scale-to-zero."
+                  "description": "Minimum number of running tasks. Set to 0 to allow scale-to-zero (service stops when idle). Set to 1 or more to keep the service always warm."
                 }
               }
             },
             "healthCheck": {
               "type": "object",
               "title": "Health check",
-              "description": "ALB health check settings. The ALB pings this path; the service must return 200 OK.",
+              "description": "ALB health check settings. The ALB pings this path every 30 seconds; the service must return HTTP 200.",
               "additionalProperties": false,
               "x-order": ["path"],
               "properties": {
@@ -99,7 +99,7 @@
                   "type": "string",
                   "title": "Health check path",
                   "default": "/health",
-                  "description": "HTTP path the ALB uses to verify the service is healthy. Must return 200 OK."
+                  "description": "HTTP path the ALB uses to verify the service is healthy (e.g. /health, /ping, /). Must return 200 OK with no auth required. If your app doesn't have a health endpoint, add one — it's required for ALB routing."
                 }
               }
             }
@@ -118,7 +118,7 @@
         "storage": {
           "type": "object",
           "title": "Storage (EFS)",
-          "description": "Provisions an EFS (NFS) filesystem with mount targets and an access point. Containers or Lambdas can mount it for shared persistent storage.",
+          "description": "Provisions an EFS (NFS) filesystem with mount targets and an access point. Containers or Lambdas can mount it for shared persistent storage (e.g. model weights, uploaded files, shared scratch space).",
           "additionalProperties": false,
           "x-order": ["efs"],
           "properties": {
@@ -131,21 +131,21 @@
               "properties": {
                 "encrypted": {
                   "type": "boolean",
-                  "title": "Encrypted",
+                  "title": "Encrypted at rest",
                   "default": true,
-                  "description": "Encrypt the EFS filesystem at rest."
+                  "description": "Encrypt the EFS filesystem at rest using AWS-managed keys. AWS handles all encryption and decryption transparently — no changes needed in your application code. Recommended: leave this on."
                 },
                 "lifecycle": {
                   "type": "string",
-                  "title": "Lifecycle policy",
+                  "title": "Infrequent-access transition",
                   "enum": ["AFTER_7_DAYS", "AFTER_14_DAYS", "AFTER_30_DAYS", "AFTER_90_DAYS"],
                   "default": "AFTER_30_DAYS",
-                  "description": "Move files to infrequent-access storage after this period of inactivity."
+                  "description": "Move files to cheaper infrequent-access storage after this period of inactivity. Files are still fully accessible — AWS moves them back automatically when read. Your app will not break or notice. This only affects cost: infrequent-access storage is ~85% cheaper than standard EFS. Choose a shorter period if your files are rarely accessed."
                 },
                 "accessPoint": {
                   "type": "object",
                   "title": "Access point",
-                  "description": "EFS access point defines the root path and POSIX user for mounts.",
+                  "description": "EFS access point defines the root directory and POSIX identity for mounts. Most teams can leave the defaults unchanged.",
                   "additionalProperties": false,
                   "x-order": ["path", "uid", "gid"],
                   "properties": {
@@ -153,19 +153,19 @@
                       "type": "string",
                       "title": "Mount path",
                       "default": "/data",
-                      "description": "Root directory path within EFS that this access point exposes."
+                      "description": "Root directory within EFS that this access point exposes. Your container sees this as the root of the mounted volume. Default /data is fine for most use cases."
                     },
                     "uid": {
                       "type": "integer",
                       "title": "POSIX user ID (uid)",
                       "default": 1000,
-                      "description": "POSIX user ID used for filesystem access (must match the container process user)."
+                      "description": "POSIX user ID that owns files written through this access point. Must match the user your container process runs as. In most Docker images, the default non-root user is UID 1000. Only change if your Dockerfile sets a different USER. Sharing UID 1000 across services is safe — each service mounts its own separate EFS filesystem."
                     },
                     "gid": {
                       "type": "integer",
                       "title": "POSIX group ID (gid)",
                       "default": 1000,
-                      "description": "POSIX group ID used for filesystem access."
+                      "description": "POSIX group ID for file ownership. Must match the group your container process runs as. Typically 1000 to match the default non-root group in most Docker images. Only change if your Dockerfile sets a different GROUP."
                     }
                   }
                 }
@@ -176,9 +176,9 @@
         "cache": {
           "type": "object",
           "title": "Cache (Redis)",
-          "description": "Creates an ElastiCache Redis cluster in the VPC. Use for sessions, rate limiting, pub/sub, or job queues.",
+          "description": "Creates an ElastiCache Redis cluster in the VPC. Use for sessions, rate limiting, pub/sub, or job queues. The Redis endpoint is injected as an environment variable.",
           "additionalProperties": false,
-          "x-order": ["engine", "nodeType", "numNodes"],
+          "x-order": ["nodeType", "numNodes"],
           "properties": {
             "engine": {
               "type": "string",
@@ -190,24 +190,32 @@
             "nodeType": {
               "type": "string",
               "title": "Node type",
+              "enum": [
+                "cache.t3.micro",
+                "cache.t3.small",
+                "cache.t3.medium",
+                "cache.r6g.large",
+                "cache.r6g.xlarge",
+                "cache.r6g.2xlarge"
+              ],
               "default": "cache.t3.micro",
-              "description": "ElastiCache node instance type (e.g. cache.t3.micro, cache.r6g.large). Determines memory and performance."
+              "description": "ElastiCache node instance type. Determines memory and throughput. t3.micro (~$13/mo, 0.5 GB) is fine for dev/light workloads. t3.small (~$26/mo, 1.37 GB) for moderate traffic. r6g.large (~$120/mo, 13 GB) for production with large datasets."
             },
             "numNodes": {
               "type": "integer",
               "title": "Number of nodes",
               "minimum": 1,
               "default": 1,
-              "description": "Number of cache nodes. Use 1 for a single-node cluster (no replication)."
+              "description": "Number of cache nodes. Use 1 for a single-node cluster (no replication). Use 2+ for a primary-replica setup with automatic failover."
             }
           }
         },
         "database": {
           "type": "object",
           "title": "Database (RDS Postgres)",
-          "description": "Creates an RDS PostgreSQL instance in the VPC. Not exposed to the internet. Accessible only from services in the same VPC.",
+          "description": "Creates an RDS PostgreSQL instance in the VPC. Not exposed to the internet. Accessible only from services in the same VPC. Connection details are injected as environment variables.",
           "additionalProperties": false,
-          "x-order": ["engine", "instanceClass", "allocatedStorage", "dbName", "dbUsername"],
+          "x-order": ["dbName", "dbUsername", "instanceClass", "allocatedStorage", "engine"],
           "properties": {
             "engine": {
               "type": "string",
@@ -218,47 +226,56 @@
             },
             "instanceClass": {
               "type": "string",
-              "title": "Instance class",
+              "title": "Instance size",
+              "enum": [
+                "db.t3.micro",
+                "db.t3.small",
+                "db.t3.medium",
+                "db.t3.large",
+                "db.r6g.large",
+                "db.r6g.xlarge",
+                "db.r6g.2xlarge"
+              ],
               "default": "db.t3.micro",
-              "description": "RDS instance type (e.g. db.t3.micro, db.t3.small, db.r6g.large). Determines CPU, memory, and IOPS."
+              "description": "RDS instance size. Determines CPU, memory, and IOPS. db.t3.micro (~$15/mo, 2 vCPU, 1 GB) for dev/light workloads. db.t3.small (~$30/mo, 2 GB) for moderate traffic. db.r6g.large (~$180/mo, 2 vCPU, 16 GB) for production."
             },
             "allocatedStorage": {
               "type": "integer",
-              "title": "Allocated storage (GiB)",
+              "title": "Storage (GiB)",
               "minimum": 20,
               "default": 20,
-              "description": "Initial storage size in GiB. Minimum 20 GiB. Storage can be increased later."
+              "description": "Initial disk size in GiB. Minimum 20 GiB. Storage can be increased later without downtime but cannot be decreased."
             },
             "dbName": {
               "type": "string",
               "title": "Database name",
-              "description": "Name of the initial database to create. Defaults to the service name if not set."
+              "description": "Name of the initial database to create inside Postgres (e.g. myapp_db, agent_store, core). This is what your app connects to. Avoid hyphens — use underscores. Example: my_service_db."
             },
             "dbUsername": {
               "type": "string",
               "title": "Master username",
-              "description": "Master database username. Defaults to the service name if not set."
+              "description": "Username for the Postgres superuser created by RDS (e.g. myapp_admin, db_owner). The platform creates this user and stores the password as a secret — your app never sets it directly. Your app uses this username (and the injected password env var) to connect. Example: myservice_admin."
             }
           }
         },
         "serviceDiscovery": {
           "type": "object",
           "title": "Service Discovery (Cloud Map)",
-          "description": "Creates an AWS Cloud Map private DNS namespace so services can find each other by name inside the VPC (e.g. my-service.agents.local).",
+          "description": "Creates an AWS Cloud Map private DNS namespace so services can find each other by hostname inside the VPC — without needing hardcoded IPs or external DNS. For example, if your namespace is agents.local, your service is reachable at my-service.agents.local from other services in the same VPC. Only add this if you have multiple services that need to call each other directly by name (e.g. an orchestrator calling worker services).",
           "additionalProperties": false,
           "x-order": ["namespace"],
           "properties": {
             "namespace": {
               "type": "string",
               "title": "DNS namespace",
-              "description": "Private DNS namespace name (e.g. agents.local). Other services in the VPC can resolve names under this namespace."
+              "description": "Private DNS domain for service-to-service discovery within the VPC (e.g. agents.local, internal.althq.com). Once set, your service registers under <service-name>.<namespace>. Other VPC services use that hostname to call it directly — no load balancer or public URL needed. If you only have one service, or your services already communicate through the public ALB URL, you probably don't need this."
             }
           }
         },
         "triggers": {
           "type": "object",
-          "title": "Triggers (EventBridge & Webhooks)",
-          "description": "Event-driven infrastructure: EventBridge Scheduler groups for scheduled tasks, and an optional webhook gateway for inbound HTTP events.",
+          "title": "Triggers",
+          "description": "Provisions trigger infrastructure: an inbound webhook endpoint and/or an EventBridge Scheduler group for scheduled tasks. These are independent features — you can enable one or both.",
           "additionalProperties": false,
           "x-order": ["webhookGateway", "eventbridge"],
           "properties": {
@@ -266,19 +283,19 @@
               "type": "boolean",
               "title": "Webhook gateway",
               "default": false,
-              "description": "Enable an HTTP webhook endpoint that forwards inbound events to your service or Lambda functions."
+              "description": "Deploys an HTTP endpoint that accepts inbound events from external systems (Slack, GitHub, Stripe, etc.) and forwards them to your service. The URL is provisioned once; you give it to the sender as their webhook URL. This is completely separate from EventBridge — it's for receiving HTTP POST events, not scheduled tasks."
             },
             "eventbridge": {
               "type": "object",
-              "title": "EventBridge",
-              "description": "EventBridge Scheduler configuration for scheduled tasks.",
+              "title": "EventBridge Scheduler group",
+              "description": "Creates an EventBridge Scheduler group — a named container for scheduled rules (cron or rate-based). The group itself doesn't create any schedules; you add individual schedules to it independently, without a redeploy. Use this if you want a named group that organises this service's scheduled tasks (e.g. nightly jobs, polling tasks). If you just need a webhook, enable that instead.",
               "additionalProperties": false,
               "x-order": ["scheduleGroup"],
               "properties": {
                 "scheduleGroup": {
                   "type": "string",
                   "title": "Schedule group name",
-                  "description": "EventBridge Scheduler group name. Schedules in this group will be associated with this service."
+                  "description": "Name for the EventBridge Scheduler group (e.g. my-service-schedules). After provisioning, add individual schedules to this group via the AWS console or CLI — no redeploy needed per schedule."
                 }
               }
             }
@@ -287,14 +304,14 @@
         "lambda": {
           "type": "object",
           "title": "Lambda functions",
-          "description": "Container-image Lambda functions. Each function is deployed as a separate Lambda using a Docker image from ECR.",
+          "description": "Provisions AWS Lambda functions using container images from ECR. Each function is a separate Lambda. For Agent Factory: provision your Lambda(s) here first — the platform creates the function resource and IAM role. Then your CI/CD workflow builds the container image and pushes it to ECR. You can use a placeholder image name now; the function will not be invokable until the image is pushed. This decouples infrastructure provisioning from code deployment.",
           "additionalProperties": false,
           "x-order": ["functions"],
           "properties": {
             "functions": {
               "type": "array",
               "title": "Functions",
-              "description": "List of Lambda functions to provision. Each entry defines a function name, container image, memory, and timeout.",
+              "description": "One entry per Lambda function to provision.",
               "items": {
                 "type": "object",
                 "title": "Lambda function",
@@ -307,27 +324,27 @@
                     "type": "string",
                     "title": "Function name",
                     "minLength": 1,
-                    "description": "Unique name for this Lambda function within the service."
+                    "description": "Unique name for this Lambda within the service (e.g. agent-runner, pdf-processor). Used as the Lambda function name in AWS."
                   },
                   "image": {
                     "type": "string",
-                    "title": "Container image",
+                    "title": "ECR image name",
                     "minLength": 1,
-                    "description": "ECR image name (without tag or registry prefix). The platform engine resolves the full ECR URI."
+                    "description": "ECR repository name for this function's container image (without tag or registry prefix). The platform resolves the full URI as <account>.dkr.ecr.<region>.amazonaws.com/<image>:latest. Example: my-service-agent-runner. Your CI/CD workflow must push an image to this exact name. You can use a placeholder name now — the function won't be invokable until an image is pushed."
                   },
                   "memory": {
                     "type": "integer",
                     "title": "Memory (MiB)",
                     "minimum": 128,
                     "default": 2048,
-                    "description": "Lambda memory allocation in MiB. Also proportionally determines CPU. Min 128."
+                    "description": "Lambda memory allocation in MiB. Lambda CPU is proportional to memory. 2048 MiB (~1 vCPU) is a good default for ML/agent workloads. Minimum 128 MiB, maximum 10240 MiB."
                   },
                   "timeout": {
                     "type": "integer",
                     "title": "Timeout (seconds)",
                     "minimum": 1,
                     "default": 120,
-                    "description": "Maximum execution duration in seconds before the Lambda is terminated. Max 900."
+                    "description": "Maximum execution time in seconds before Lambda terminates the function. Agent and ML workloads often need longer timeouts. Maximum is 900 seconds (15 minutes)."
                   }
                 }
               }
