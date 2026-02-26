@@ -133,22 +133,38 @@ spec:
 
 ---
 
-## triggers
+## webhookGateway
 
-**What it does:** Creates an EventBridge Scheduler schedule group and IAM role so you can create scheduled invocations (e.g. cron-style triggers for Lambdas). Optionally supports a webhook gateway concept in agent setups.
+**What it does:** Provisions an inbound HTTP endpoint that receives events from external systems (Slack, GitHub, Stripe, etc.) and forwards them to your service. The URL is stable and provisioned once — you give it to senders as their webhook URL.
 
-**When to use:** Scheduled jobs or time-based triggers.
+**When to use:** Your service needs to receive HTTP POST events from external sources.
 
 **Example:**
 
 ```yaml
 spec:
-  triggers:
-    eventbridge:
-      scheduleGroup: my-schedules
+  webhookGateway: {}
 ```
 
-**Key fields:** `eventbridge.scheduleGroup` (optional; defaults to service name).
+No configuration fields are required — enabling it is enough.
+
+---
+
+## eventbridge
+
+**What it does:** Creates an EventBridge Scheduler group — a named container for scheduled rules (cron or rate-based). The group does not create schedules itself; you add individual schedules to it via the AWS console or CLI without a redeploy.
+
+**When to use:** You need time-based triggers for your service or its Lambdas (nightly jobs, polling tasks, cron-style invocations).
+
+**Example:**
+
+```yaml
+spec:
+  eventbridge:
+    scheduleGroup: my-service-schedules
+```
+
+**Key fields:** `scheduleGroup` (optional; defaults to `<service-name>-schedules`).
 
 ---
 

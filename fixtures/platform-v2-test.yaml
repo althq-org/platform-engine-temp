@@ -30,9 +30,8 @@ spec:
         uid: 1000
         gid: 1000
 
-  triggers:
-    eventbridge:
-      scheduleGroup: platform-v2-test
+  eventbridge:
+    scheduleGroup: platform-v2-test
 
   lambda:
     functions:

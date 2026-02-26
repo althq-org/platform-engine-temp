@@ -4,18 +4,34 @@
   "title": "Platform Service Spec v1",
   "description": "Schema for platform.yaml (apiVersion: platform.althq.com/v1)",
   "type": "object",
-  "required": ["apiVersion", "kind", "metadata", "spec"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
   "additionalProperties": false,
   "properties": {
-    "apiVersion": { "type": "string", "const": "platform.althq.com/v1" },
-    "kind": { "type": "string", "const": "Service" },
+    "apiVersion": {
+      "type": "string",
+      "const": "platform.althq.com/v1"
+    },
+    "kind": {
+      "type": "string",
+      "const": "Service"
+    },
     "metadata": {
       "type": "object",
       "title": "Metadata",
       "description": "Name and description for this service.",
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "additionalProperties": false,
-      "x-order": ["name", "description"],
+      "x-order": [
+        "name",
+        "description"
+      ],
       "properties": {
         "name": {
           "type": "string",
@@ -41,12 +57,20 @@
           "title": "Compute (ECS)",
           "description": "Runs your app as an ECS Fargate service with ALB, DNS, and Cloudflare Access. Best for long-running containers (web apps, APIs, workers).",
           "additionalProperties": false,
-          "x-order": ["port", "cpu", "memory", "instances", "healthCheck"],
+          "x-order": [
+            "port",
+            "cpu",
+            "memory",
+            "instances",
+            "healthCheck"
+          ],
           "properties": {
             "type": {
               "type": "string",
               "title": "Compute type",
-              "enum": ["ecs"],
+              "enum": [
+                "ecs"
+              ],
               "default": "ecs",
               "description": "Container orchestration type. Only ECS Fargate is supported."
             },
@@ -70,14 +94,16 @@
               "title": "Memory (MiB)",
               "minimum": 512,
               "default": 1024,
-              "description": "Container memory in MiB. Must be compatible with the chosen CPU units (e.g. 512 CPU → 1024–2048 MB, 1024 CPU → 2048–8192 MB)."
+              "description": "Container memory in MiB. Must be compatible with the chosen CPU units (e.g. 512 CPU \u2192 1024\u20132048 MB, 1024 CPU \u2192 2048\u20138192 MB)."
             },
             "instances": {
               "type": "object",
               "title": "Instances",
               "description": "Scaling configuration for the ECS service.",
               "additionalProperties": false,
-              "x-order": ["min"],
+              "x-order": [
+                "min"
+              ],
               "properties": {
                 "min": {
                   "type": "integer",
@@ -93,13 +119,15 @@
               "title": "Health check",
               "description": "ALB health check settings. The ALB pings this path every 30 seconds; the service must return HTTP 200.",
               "additionalProperties": false,
-              "x-order": ["path"],
+              "x-order": [
+                "path"
+              ],
               "properties": {
                 "path": {
                   "type": "string",
                   "title": "Health check path",
                   "default": "/health",
-                  "description": "HTTP path the ALB uses to verify the service is healthy (e.g. /health, /ping, /). Must return 200 OK with no auth required. If your app doesn't have a health endpoint, add one — it's required for ALB routing."
+                  "description": "HTTP path the ALB uses to verify the service is healthy (e.g. /health, /ping, /). Must return 200 OK with no auth required. If your app doesn't have a health endpoint, add one \u2014 it's required for ALB routing."
                 }
               }
             }
@@ -120,34 +148,49 @@
           "title": "Storage (EFS)",
           "description": "Provisions an EFS (NFS) filesystem with mount targets and an access point. Containers or Lambdas can mount it for shared persistent storage (e.g. model weights, uploaded files, shared scratch space).",
           "additionalProperties": false,
-          "x-order": ["efs"],
+          "x-order": [
+            "efs"
+          ],
           "properties": {
             "efs": {
               "type": "object",
               "title": "EFS configuration",
               "description": "Amazon Elastic File System settings.",
               "additionalProperties": false,
-              "x-order": ["encrypted", "lifecycle", "accessPoint"],
+              "x-order": [
+                "encrypted",
+                "lifecycle",
+                "accessPoint"
+              ],
               "properties": {
                 "encrypted": {
                   "type": "boolean",
                   "title": "Encrypted at rest",
                   "default": true,
-                  "description": "Encrypt the EFS filesystem at rest using AWS-managed keys. AWS handles all encryption and decryption transparently — no changes needed in your application code. Recommended: leave this on."
+                  "description": "Encrypt the EFS filesystem at rest using AWS-managed keys. AWS handles all encryption and decryption transparently \u2014 no changes needed in your application code. Recommended: leave this on."
                 },
                 "lifecycle": {
                   "type": "string",
                   "title": "Infrequent-access transition",
-                  "enum": ["AFTER_7_DAYS", "AFTER_14_DAYS", "AFTER_30_DAYS", "AFTER_90_DAYS"],
+                  "enum": [
+                    "AFTER_7_DAYS",
+                    "AFTER_14_DAYS",
+                    "AFTER_30_DAYS",
+                    "AFTER_90_DAYS"
+                  ],
                   "default": "AFTER_30_DAYS",
-                  "description": "Move files to cheaper infrequent-access storage after this period of inactivity. Files are still fully accessible — AWS moves them back automatically when read. Your app will not break or notice. This only affects cost: infrequent-access storage is ~85% cheaper than standard EFS. Choose a shorter period if your files are rarely accessed."
+                  "description": "Move files to cheaper infrequent-access storage after this period of inactivity. Files are still fully accessible \u2014 AWS moves them back automatically when read. Your app will not break or notice. This only affects cost: infrequent-access storage is ~85% cheaper than standard EFS. Choose a shorter period if your files are rarely accessed."
                 },
                 "accessPoint": {
                   "type": "object",
                   "title": "Access point",
                   "description": "EFS access point defines the root directory and POSIX identity for mounts. Most teams can leave the defaults unchanged.",
                   "additionalProperties": false,
-                  "x-order": ["path", "uid", "gid"],
+                  "x-order": [
+                    "path",
+                    "uid",
+                    "gid"
+                  ],
                   "properties": {
                     "path": {
                       "type": "string",
@@ -159,7 +202,7 @@
                       "type": "integer",
                       "title": "POSIX user ID (uid)",
                       "default": 1000,
-                      "description": "POSIX user ID that owns files written through this access point. Must match the user your container process runs as. In most Docker images, the default non-root user is UID 1000. Only change if your Dockerfile sets a different USER. Sharing UID 1000 across services is safe — each service mounts its own separate EFS filesystem."
+                      "description": "POSIX user ID that owns files written through this access point. Must match the user your container process runs as. In most Docker images, the default non-root user is UID 1000. Only change if your Dockerfile sets a different USER. Sharing UID 1000 across services is safe \u2014 each service mounts its own separate EFS filesystem."
                     },
                     "gid": {
                       "type": "integer",
@@ -178,12 +221,17 @@
           "title": "Cache (Redis)",
           "description": "Creates an ElastiCache Redis cluster in the VPC. Use for sessions, rate limiting, pub/sub, or job queues. The Redis endpoint is injected as an environment variable.",
           "additionalProperties": false,
-          "x-order": ["nodeType", "numNodes"],
+          "x-order": [
+            "nodeType",
+            "numNodes"
+          ],
           "properties": {
             "engine": {
               "type": "string",
               "title": "Engine",
-              "enum": ["redis"],
+              "enum": [
+                "redis"
+              ],
               "default": "redis",
               "description": "Cache engine. Only Redis is supported."
             },
@@ -215,13 +263,24 @@
           "title": "Database (RDS Postgres)",
           "description": "Creates an RDS PostgreSQL instance in the VPC. Not exposed to the internet. Accessible only from services in the same VPC. Connection details are injected as environment variables.",
           "additionalProperties": false,
-          "required": ["dbName", "dbUsername"],
-          "x-order": ["dbName", "dbUsername", "instanceClass", "allocatedStorage", "engine"],
+          "required": [
+            "dbName",
+            "dbUsername"
+          ],
+          "x-order": [
+            "dbName",
+            "dbUsername",
+            "instanceClass",
+            "allocatedStorage",
+            "engine"
+          ],
           "properties": {
             "engine": {
               "type": "string",
               "title": "Engine",
-              "enum": ["postgres"],
+              "enum": [
+                "postgres"
+              ],
               "default": "postgres",
               "description": "Database engine. Only PostgreSQL is supported."
             },
@@ -250,64 +309,39 @@
             "dbName": {
               "type": "string",
               "title": "Database name",
-              "description": "Name of the initial database to create inside Postgres (e.g. myapp_db, agent_store, core). This is what your app connects to. Avoid hyphens — use underscores. Example: my_service_db."
+              "description": "Name of the initial database to create inside Postgres (e.g. myapp_db, agent_store, core). This is what your app connects to. Avoid hyphens \u2014 use underscores. Example: my_service_db."
             },
             "dbUsername": {
               "type": "string",
               "title": "Master username",
-              "description": "Username for the Postgres superuser created by RDS (e.g. myapp_admin, db_owner). The platform creates this user and stores the password as a secret — your app never sets it directly. Your app uses this username (and the injected password env var) to connect. Example: myservice_admin."
+              "description": "Username for the Postgres superuser created by RDS (e.g. myapp_admin, db_owner). The platform creates this user and stores the password as a secret \u2014 your app never sets it directly. Your app uses this username (and the injected password env var) to connect. Example: myservice_admin."
             }
           }
         },
         "serviceDiscovery": {
           "type": "object",
           "title": "Service Discovery (Cloud Map)",
-          "description": "Creates an AWS Cloud Map private DNS namespace so services can find each other by hostname inside the VPC — without needing hardcoded IPs or external DNS. For example, if your namespace is agents.local, your service is reachable at my-service.agents.local from other services in the same VPC. Only add this if you have multiple services that need to call each other directly by name (e.g. an orchestrator calling worker services).",
+          "description": "Creates an AWS Cloud Map private DNS namespace so services can find each other by hostname inside the VPC \u2014 without needing hardcoded IPs or external DNS. For example, if your namespace is agents.local, your service is reachable at my-service.agents.local from other services in the same VPC. Only add this if you have multiple services that need to call each other directly by name (e.g. an orchestrator calling worker services).",
           "additionalProperties": false,
-          "x-order": ["namespace"],
+          "x-order": [
+            "namespace"
+          ],
           "properties": {
             "namespace": {
               "type": "string",
               "title": "DNS namespace",
-              "description": "Private DNS domain for service-to-service discovery within the VPC (e.g. agents.local, internal.althq.com). Once set, your service registers under <service-name>.<namespace>. Other VPC services use that hostname to call it directly — no load balancer or public URL needed. If you only have one service, or your services already communicate through the public ALB URL, you probably don't need this."
-            }
-          }
-        },
-        "triggers": {
-          "type": "object",
-          "title": "Triggers",
-          "description": "Provisions trigger infrastructure: an inbound webhook endpoint and/or an EventBridge Scheduler group for scheduled tasks. These are independent features — you can enable one or both.",
-          "additionalProperties": false,
-          "x-order": ["webhookGateway", "eventbridge"],
-          "properties": {
-            "webhookGateway": {
-              "type": "boolean",
-              "title": "Webhook gateway",
-              "default": false,
-              "description": "Deploys an HTTP endpoint that accepts inbound events from external systems (Slack, GitHub, Stripe, etc.) and forwards them to your service. The URL is provisioned once; you give it to the sender as their webhook URL. This is completely separate from EventBridge — it's for receiving HTTP POST events, not scheduled tasks."
-            },
-            "eventbridge": {
-              "type": "object",
-              "title": "EventBridge Scheduler group",
-              "description": "Creates an EventBridge Scheduler group — a named container for scheduled rules (cron or rate-based). The group itself doesn't create any schedules; you add individual schedules to it independently, without a redeploy. Use this if you want a named group that organises this service's scheduled tasks (e.g. nightly jobs, polling tasks). If you just need a webhook, enable that instead.",
-              "additionalProperties": false,
-              "x-order": ["scheduleGroup"],
-              "properties": {
-                "scheduleGroup": {
-                  "type": "string",
-                  "title": "Schedule group name",
-                  "description": "Name for the EventBridge Scheduler group (e.g. my-service-schedules). After provisioning, add individual schedules to this group via the AWS console or CLI — no redeploy needed per schedule."
-                }
-              }
+              "description": "Private DNS domain for service-to-service discovery within the VPC (e.g. agents.local, internal.althq.com). Once set, your service registers under <service-name>.<namespace>. Other VPC services use that hostname to call it directly \u2014 no load balancer or public URL needed. If you only have one service, or your services already communicate through the public ALB URL, you probably don't need this."
             }
           }
         },
         "lambda": {
           "type": "object",
           "title": "Lambda functions",
-          "description": "Provisions AWS Lambda functions using container images from ECR. Each function is a separate Lambda. For Agent Factory: provision your Lambda(s) here first — the platform creates the function resource and IAM role. Then your CI/CD workflow builds the container image and pushes it to ECR. You can use a placeholder image name now; the function will not be invokable until the image is pushed. This decouples infrastructure provisioning from code deployment.",
+          "description": "Provisions AWS Lambda functions using container images from ECR. Each function is a separate Lambda. For Agent Factory: provision your Lambda(s) here first \u2014 the platform creates the function resource and IAM role. Then your CI/CD workflow builds the container image and pushes it to ECR. You can use a placeholder image name now; the function will not be invokable until the image is pushed. This decouples infrastructure provisioning from code deployment.",
           "additionalProperties": false,
-          "x-order": ["functions"],
+          "x-order": [
+            "functions"
+          ],
           "properties": {
             "functions": {
               "type": "array",
@@ -318,8 +352,16 @@
                 "title": "Lambda function",
                 "description": "A single Lambda function definition.",
                 "additionalProperties": false,
-                "required": ["name", "image"],
-                "x-order": ["name", "image", "memory", "timeout"],
+                "required": [
+                  "name",
+                  "image"
+                ],
+                "x-order": [
+                  "name",
+                  "image",
+                  "memory",
+                  "timeout"
+                ],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -331,7 +373,7 @@
                     "type": "string",
                     "title": "ECR image name",
                     "minLength": 1,
-                    "description": "ECR repository name for this function's container image (without tag or registry prefix). The platform resolves the full URI as <account>.dkr.ecr.<region>.amazonaws.com/<image>:latest. Example: my-service-agent-runner. Your CI/CD workflow must push an image to this exact name. You can use a placeholder name now — the function won't be invokable until an image is pushed."
+                    "description": "ECR repository name for this function's container image (without tag or registry prefix). The platform resolves the full URI as <account>.dkr.ecr.<region>.amazonaws.com/<image>:latest. Example: my-service-agent-runner. Your CI/CD workflow must push an image to this exact name. You can use a placeholder name now \u2014 the function won't be invokable until an image is pushed."
                   },
                   "memory": {
                     "type": "integer",
@@ -349,6 +391,29 @@
                   }
                 }
               }
+            }
+          }
+        },
+        "webhookGateway": {
+          "type": "object",
+          "title": "Webhook Gateway",
+          "description": "Provisions an inbound HTTP endpoint that receives events from external systems (Slack, GitHub, Stripe, etc.) and forwards them to your service. The URL is stable and provisioned once \u2014 you give it to senders as their webhook URL. No scheduled tasks; purely for receiving HTTP POST events.",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "eventbridge": {
+          "type": "object",
+          "title": "EventBridge Scheduler",
+          "description": "Creates an EventBridge Scheduler group \u2014 a named container for scheduled rules (cron or rate-based). The group itself does not create schedules; you add individual schedules to it independently via the AWS console or CLI, with no redeploy required. Use this when you need time-based triggers (nightly jobs, polling tasks).",
+          "additionalProperties": false,
+          "x-order": [
+            "scheduleGroup"
+          ],
+          "properties": {
+            "scheduleGroup": {
+              "type": "string",
+              "title": "Schedule group name",
+              "description": "Name for the EventBridge Scheduler group (e.g. my-service-schedules). After provisioning, add individual schedules to this group via the AWS console or CLI \u2014 no redeploy needed per schedule. Defaults to <service-name>-schedules if omitted."
             }
           }
         }

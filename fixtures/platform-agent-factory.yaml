@@ -39,10 +39,10 @@ spec:
   serviceDiscovery:
     namespace: agents.local
 
-  triggers:
-    webhookGateway: true
-    eventbridge:
-      scheduleGroup: agent-factory
+  webhookGateway: {}
+
+  eventbridge:
+    scheduleGroup: agent-factory
 
   lambda:
     functions:

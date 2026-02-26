@@ -8,8 +8,10 @@ import pytest
 
 from devops.config import (
     ComputeConfig,
+    EventBridgeConfig,
     PlatformConfig,
     StorageConfig,
+    WebhookGatewayConfig,
     create_aws_provider,
     load_platform_config,
 )
@@ -178,6 +180,8 @@ spec:
     engine: postgres
     instanceClass: db.t3.small
     allocatedStorage: 30
+    dbName: my_db
+    dbUsername: my_admin
 """
     yaml_file = tmp_path / "platform.yaml"
     yaml_file.write_text(yaml_content)
@@ -195,8 +199,8 @@ spec:
     assert config.database.allocated_storage == 30
 
 
-def test_platform_config_parses_service_discovery_and_triggers(tmp_path: Path) -> None:
-    """Test parsing serviceDiscovery and triggers sections."""
+def test_platform_config_parses_service_discovery_and_eventbridge(tmp_path: Path) -> None:
+    """Test parsing serviceDiscovery and eventbridge sections."""
     yaml_content = """
 apiVersion: platform.althq.com/v1
 kind: Service
@@ -207,10 +211,8 @@ spec:
     port: 80
   serviceDiscovery:
     namespace: agents.local
-  triggers:
-    webhookGateway: true
-    eventbridge:
-      scheduleGroup: my-schedules
+  eventbridge:
+    scheduleGroup: my-schedules
 """
     yaml_file = tmp_path / "platform.yaml"
     yaml_file.write_text(yaml_content)
@@ -220,9 +222,31 @@ spec:
         config = PlatformConfig.from_file(str(yaml_file))
     assert config.service_discovery is not None
     assert config.service_discovery.namespace == "agents.local"
-    assert config.triggers is not None
-    assert config.triggers.webhook_gateway is True
-    assert config.triggers.eventbridge_schedule_group == "my-schedules"
+    assert config.eventbridge is not None
+    assert isinstance(config.eventbridge, EventBridgeConfig)
+    assert config.eventbridge.schedule_group == "my-schedules"
+
+
+def test_platform_config_parses_webhook_gateway(tmp_path: Path) -> None:
+    """Test parsing webhookGateway section."""
+    yaml_content = """
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: my-svc
+spec:
+  compute:
+    port: 80
+  webhookGateway: {}
+"""
+    yaml_file = tmp_path / "platform.yaml"
+    yaml_file.write_text(yaml_content)
+    mock_config = MagicMock()
+    mock_config.require.return_value = "us-west-2"
+    with patch("devops.config.pulumi.Config", return_value=mock_config):
+        config = PlatformConfig.from_file(str(yaml_file))
+    assert config.webhook_gateway is not None
+    assert isinstance(config.webhook_gateway, WebhookGatewayConfig)
 
 
 def test_platform_config_parses_lambda_section(tmp_path: Path) -> None:

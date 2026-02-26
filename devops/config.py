@@ -74,9 +74,13 @@ class LambdaConfig:
 
 
 @dataclass
-class TriggersConfig:
-    eventbridge_schedule_group: str | None = None
-    webhook_gateway: bool = False
+class WebhookGatewayConfig:
+    """Presence of this config means the webhook gateway is enabled."""
+
+
+@dataclass
+class EventBridgeConfig:
+    schedule_group: str | None = None
 
 
 @dataclass
@@ -92,7 +96,8 @@ class PlatformConfig:
     database: DatabaseConfig | None = None
     service_discovery: ServiceDiscoveryConfig | None = None
     lambda_config: LambdaConfig | None = None
-    triggers: TriggersConfig | None = None
+    webhook_gateway: WebhookGatewayConfig | None = None
+    eventbridge: EventBridgeConfig | None = None
     secrets: list[str] = field(default_factory=list)
 
     # Backward-compat: delegate to compute when present
@@ -126,7 +131,8 @@ class PlatformConfig:
             "database",
             "serviceDiscovery",
             "lambda",
-            "triggers",
+            "webhookGateway",
+            "eventbridge",
         ]
         return {
             k: self.raw_spec[k]
@@ -219,13 +225,15 @@ class PlatformConfig:
                 ]
             )
 
-        triggers = None
-        if "triggers" in spec and spec["triggers"] is not None:
-            t = spec["triggers"]
-            eb = t.get("eventbridge") or {}
-            triggers = TriggersConfig(
-                webhook_gateway=t.get("webhookGateway", False),
-                eventbridge_schedule_group=eb.get("scheduleGroup"),
+        webhook_gateway = None
+        if "webhookGateway" in spec and spec["webhookGateway"] is not None:
+            webhook_gateway = WebhookGatewayConfig()
+
+        eventbridge = None
+        if "eventbridge" in spec and spec["eventbridge"] is not None:
+            eb = spec["eventbridge"]
+            eventbridge = EventBridgeConfig(
+                schedule_group=eb.get("scheduleGroup"),
             )
 
         return cls(
@@ -238,7 +246,8 @@ class PlatformConfig:
             database=database,
             service_discovery=service_discovery,
             lambda_config=lambda_config,
-            triggers=triggers,
+            webhook_gateway=webhook_gateway,
+            eventbridge=eventbridge,
             secrets=spec.get("secrets", []),
         )
 
