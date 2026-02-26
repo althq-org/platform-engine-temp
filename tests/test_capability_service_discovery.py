@@ -2,9 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-import devops.capabilities.service_discovery  # noqa: F401 - register serviceDiscovery capability
 from devops.capabilities.context import CapabilityContext
 from devops.capabilities.registry import CAPABILITIES
+import devops.capabilities.service_discovery  # noqa: F401 - register serviceDiscovery capability
 
 
 def _make_ctx() -> CapabilityContext:

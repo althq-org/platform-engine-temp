@@ -2,9 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-import devops.capabilities.storage  # noqa: F401 - register storage capability
 from devops.capabilities.context import CapabilityContext
 from devops.capabilities.registry import CAPABILITIES
+import devops.capabilities.storage  # noqa: F401 - register storage capability
 
 
 def _make_ctx_with_efs_sg() -> CapabilityContext:

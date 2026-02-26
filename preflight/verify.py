@@ -2,6 +2,10 @@
 
 Runs inside the VPC with sg_agents. If Preflight passes, agents will too.
 Exit 0 = all checks passed. Exit 1 = something is broken.
+
+Env vars (REDIS_HOST, RDS_*, etc.) must match what runtime (ECS/Lambda) receives;
+they are set from the same platform stack outputs. Keep this in sync when changing
+infra or task definitions.
 """
 
 import json

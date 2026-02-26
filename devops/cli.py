@@ -9,6 +9,7 @@ import subprocess
 import sys
 from typing import Any
 
+import jsonschema
 import yaml
 
 CONFIG_DIR = ".platform-engine"
@@ -117,6 +118,17 @@ def _run(
     return subprocess.run(cmd, cwd=_project_root(), env=full_env, check=check)
 
 
+def _resolve_platform_yaml_path(platform_yaml_path: str) -> Path:
+    """Resolve path to platform.yaml; exit if file not found."""
+    path = Path(platform_yaml_path)
+    if not path.is_absolute():
+        path = _project_root() / path
+    if not path.exists():
+        print(f"File not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    return path
+
+
 def _service_name_from_yaml(path: Path) -> str:
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
@@ -127,6 +139,51 @@ def _stack_name(service_name: str, config: dict[str, Any]) -> str:
     prefix = config.get("stack_prefix", DEFAULT_STACK_PREFIX)
     region = config["region"]
     return f"{prefix}.{service_name}.{region}"
+
+
+def _resolve_yaml_and_ensure_stack(platform_yaml_path: str) -> tuple[Path, str, str, dict[str, str]]:
+    """Resolve platform.yaml, ensure Pulumi stack exists, set config. Returns (path, service_name, stack, env)."""
+    _check_pulumi_cli()
+    config = _require_config()
+    path = _resolve_platform_yaml_path(platform_yaml_path)
+    service_name = _service_name_from_yaml(path)
+    stack = _stack_name(service_name, config)
+    backend_url = config["backend_url"]
+    region = config["region"]
+    devops_dir = _project_root() / "devops"
+    if not (devops_dir / "Pulumi.yaml").exists():
+        print("devops/Pulumi.yaml not found. Run this from the platform-engine-temp repo root.", file=sys.stderr)
+        sys.exit(1)
+    env = {
+        "PLATFORM_YAML_PATH": str(path.resolve()),
+        "PULUMI_BACKEND_URL": backend_url,
+    }
+    select = _run(
+        ["pulumi", "stack", "select", stack, "-C", "devops"],
+        env=env,
+        check=False,
+        stderr=subprocess.DEVNULL,
+    )
+    if select.returncode != 0:
+        kms = KMS_SECRETS_PROVIDER_TEMPLATE.format(region=region)
+        _run(
+            [
+                "pulumi",
+                "stack",
+                "init",
+                stack,
+                "--secrets-provider",
+                kms,
+                "-C",
+                "devops",
+            ],
+            env=env,
+        )
+    _run(
+        ["pulumi", "config", "set", "aws:region", region, "-C", "devops"],
+        env=env,
+    )
+    return (path, service_name, stack, env)
 
 
 # --- setup ---
@@ -207,54 +264,7 @@ def _cmd_list() -> None:
 
 
 def _cmd_create(platform_yaml_path: str) -> None:
-    _check_pulumi_cli()
-    config = _require_config()
-    path = Path(platform_yaml_path)
-    if not path.is_absolute():
-        path = _project_root() / path
-    if not path.exists():
-        print(f"File not found: {path}", file=sys.stderr)
-        sys.exit(1)
-    service_name = _service_name_from_yaml(path)
-    stack = _stack_name(service_name, config)
-    backend_url = config["backend_url"]
-    region = config["region"]
-    devops_dir = _project_root() / "devops"
-    if not (devops_dir / "Pulumi.yaml").exists():
-        print("devops/Pulumi.yaml not found. Run this from the platform-engine-temp repo root.", file=sys.stderr)
-        sys.exit(1)
-
-    env = {
-        "PLATFORM_YAML_PATH": str(path.resolve()),
-        "PULUMI_BACKEND_URL": backend_url,
-    }
-    # Select or create stack (use Pulumi CLI binary, not python -m pulumi)
-    # Suppress stderr for select so we don't print "error: no stack named ..." before creating it
-    select = _run(
-        ["pulumi", "stack", "select", stack, "-C", "devops"],
-        env=env,
-        check=False,
-        stderr=subprocess.DEVNULL,
-    )
-    if select.returncode != 0:
-        kms = KMS_SECRETS_PROVIDER_TEMPLATE.format(region=region)
-        _run(
-            [
-                "pulumi",
-                "stack",
-                "init",
-                stack,
-                "--secrets-provider",
-                kms,
-                "-C",
-                "devops",
-            ],
-            env=env,
-        )
-    _run(
-        ["pulumi", "config", "set", "aws:region", region, "-C", "devops"],
-        env=env,
-    )
+    _path, service_name, _stack, env = _resolve_yaml_and_ensure_stack(platform_yaml_path)
     print(f"Provisioning infrastructure for service '{service_name}'...")
     _run(["pulumi", "up", "-C", "devops", "-y"], env=env)
     print(f"Service '{service_name}' provisioned. URL: https://{service_name}.althq-dev.com (if DNS is configured)")
@@ -265,20 +275,18 @@ def _cmd_create(platform_yaml_path: str) -> None:
 
 def _cmd_validate(platform_yaml_path: str) -> None:
     """Validate platform.yaml against the schema (no Pulumi or AWS required)."""
-    path = Path(platform_yaml_path)
-    if not path.is_absolute():
-        path = _project_root() / path
-    if not path.exists():
-        print(f"File not found: {path}", file=sys.stderr)
-        sys.exit(1)
+    path = _resolve_platform_yaml_path(platform_yaml_path)
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     try:
         from devops.spec.validator import validate_platform_spec
 
         validate_platform_spec(data)
-    except Exception as e:
+    except (jsonschema.ValidationError, ValueError) as e:
         print(f"Validation failed: {e}", file=sys.stderr)
+        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"Schema not found: {e}", file=sys.stderr)
         sys.exit(1)
     print("Valid.")
 
@@ -288,51 +296,7 @@ def _cmd_validate(platform_yaml_path: str) -> None:
 
 def _cmd_preview(platform_yaml_path: str) -> None:
     """Show Pulumi preview for the given platform.yaml (stack select/init if needed)."""
-    _check_pulumi_cli()
-    config = _require_config()
-    path = Path(platform_yaml_path)
-    if not path.is_absolute():
-        path = _project_root() / path
-    if not path.exists():
-        print(f"File not found: {path}", file=sys.stderr)
-        sys.exit(1)
-    service_name = _service_name_from_yaml(path)
-    stack = _stack_name(service_name, config)
-    backend_url = config["backend_url"]
-    region = config["region"]
-    devops_dir = _project_root() / "devops"
-    if not (devops_dir / "Pulumi.yaml").exists():
-        print("devops/Pulumi.yaml not found. Run this from the platform-engine-temp repo root.", file=sys.stderr)
-        sys.exit(1)
-    env = {
-        "PLATFORM_YAML_PATH": str(path.resolve()),
-        "PULUMI_BACKEND_URL": backend_url,
-    }
-    select = _run(
-        ["pulumi", "stack", "select", stack, "-C", "devops"],
-        env=env,
-        check=False,
-        stderr=subprocess.DEVNULL,
-    )
-    if select.returncode != 0:
-        kms = KMS_SECRETS_PROVIDER_TEMPLATE.format(region=region)
-        _run(
-            [
-                "pulumi",
-                "stack",
-                "init",
-                stack,
-                "--secrets-provider",
-                kms,
-                "-C",
-                "devops",
-            ],
-            env=env,
-        )
-    _run(
-        ["pulumi", "config", "set", "aws:region", region, "-C", "devops"],
-        env=env,
-    )
+    _path, service_name, stack, env = _resolve_yaml_and_ensure_stack(platform_yaml_path)
     print(f"Preview for service '{service_name}' (stack {stack})...")
     _run(["pulumi", "preview", "-C", "devops"], env=env)
 

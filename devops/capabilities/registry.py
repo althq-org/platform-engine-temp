@@ -1,8 +1,8 @@
 """Capability registry: phase ordering and handler registration."""
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import IntEnum
-from collections.abc import Callable
 from typing import Any, Protocol
 
 from devops.capabilities.context import CapabilityContext

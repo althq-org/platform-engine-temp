@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-import devops.capabilities.lambda_functions  # noqa: F401 - register lambda capability
 from devops.capabilities.context import CapabilityContext
+import devops.capabilities.lambda_functions  # noqa: F401 - register lambda capability
 from devops.capabilities.registry import CAPABILITIES
 
 

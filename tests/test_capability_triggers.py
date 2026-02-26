@@ -2,9 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
-import devops.capabilities.triggers  # noqa: F401 - register triggers capability
 from devops.capabilities.context import CapabilityContext
 from devops.capabilities.registry import CAPABILITIES
+import devops.capabilities.triggers  # noqa: F401 - register triggers capability
 
 
 def _make_ctx() -> CapabilityContext:

@@ -99,7 +99,9 @@
           "properties": {
             "engine": { "type": "string", "enum": ["postgres"], "default": "postgres" },
             "instanceClass": { "type": "string", "default": "db.t3.micro" },
-            "allocatedStorage": { "type": "integer", "minimum": 20, "default": 20 }
+            "allocatedStorage": { "type": "integer", "minimum": 20, "default": 20 },
+            "dbName": { "type": "string", "description": "Database name (default from service name)" },
+            "dbUsername": { "type": "string", "description": "Master username (default from service name)" }
           }
         },
         "serviceDiscovery": {

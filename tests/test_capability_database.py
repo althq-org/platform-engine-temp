@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-import devops.capabilities.database  # noqa: F401 - register database capability
 from devops.capabilities.context import CapabilityContext
+import devops.capabilities.database  # noqa: F401 - register database capability
 from devops.capabilities.registry import CAPABILITIES
 
 

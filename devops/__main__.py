@@ -5,20 +5,20 @@ Loads config, validates capability requirements, runs foundation then capability
 
 import pulumi
 
-from devops.capabilities.context import CapabilityContext
-from devops.capabilities.foundation import provision_foundation
-from devops.capabilities.registry import CAPABILITIES, Phase
-from devops.config import create_aws_provider, load_platform_config
-from devops.shared.lookups import lookup_shared_infrastructure
+import devops.capabilities.cache
 
 # Register capability handlers (import side-effect)
-import devops.capabilities.compute  # noqa: F401
-import devops.capabilities.cache  # noqa: F401
-import devops.capabilities.storage  # noqa: F401
-import devops.capabilities.database  # noqa: F401
-import devops.capabilities.service_discovery  # noqa: F401
-import devops.capabilities.lambda_functions  # noqa: F401
+import devops.capabilities.compute
+from devops.capabilities.context import CapabilityContext
+import devops.capabilities.database
+from devops.capabilities.foundation import provision_foundation
+import devops.capabilities.lambda_functions
+from devops.capabilities.registry import CAPABILITIES, Phase
+import devops.capabilities.service_discovery
+import devops.capabilities.storage
 import devops.capabilities.triggers  # noqa: F401
+from devops.config import create_aws_provider, load_platform_config
+from devops.shared.lookups import lookup_shared_infrastructure
 
 config = load_platform_config()
 aws_provider = create_aws_provider(config.service_name, config.region)
