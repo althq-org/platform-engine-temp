@@ -11,17 +11,25 @@
     "kind": { "type": "string", "const": "Service" },
     "metadata": {
       "type": "object",
+      "title": "Metadata",
+      "description": "Name and description for this service.",
       "required": ["name"],
       "additionalProperties": false,
+      "x-order": ["name", "description"],
       "properties": {
         "name": {
           "type": "string",
+          "title": "Service name",
           "minLength": 2,
           "maxLength": 63,
           "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
-          "description": "Service name (DNS-safe, used for stack names, etc.)"
+          "description": "DNS-safe service name (lowercase letters, numbers, hyphens). Used for stack names, DNS, and resource tagging."
         },
-        "description": { "type": "string", "description": "Optional human-readable description" }
+        "description": {
+          "type": "string",
+          "title": "Description",
+          "description": "Optional human-readable description of what this service does."
+        }
       }
     },
     "spec": {
@@ -30,52 +38,135 @@
       "properties": {
         "compute": {
           "type": "object",
-          "description": "Compute configuration (e.g. ECS). Optional if other sections are used.",
+          "title": "Compute (ECS)",
+          "description": "Runs your app as an ECS Fargate service with ALB, DNS, and Cloudflare Access. Best for long-running containers (web apps, APIs, workers).",
           "additionalProperties": false,
+          "x-order": ["port", "cpu", "memory", "instances", "healthCheck"],
           "properties": {
-            "type": { "type": "string", "enum": ["ecs"], "default": "ecs" },
-            "port": { "type": "integer", "minimum": 1, "maximum": 65535, "description": "Container port" },
-            "cpu": { "type": "integer", "minimum": 256, "description": "CPU units" },
-            "memory": { "type": "integer", "minimum": 512, "description": "Memory in MiB" },
+            "type": {
+              "type": "string",
+              "title": "Compute type",
+              "enum": ["ecs"],
+              "default": "ecs",
+              "description": "Container orchestration type. Only ECS Fargate is supported."
+            },
+            "port": {
+              "type": "integer",
+              "title": "Container port",
+              "minimum": 1,
+              "maximum": 65535,
+              "default": 80,
+              "description": "Port your app listens on inside the container. HTTPS (443) is terminated at Cloudflare/ALB; ALB forwards to this port."
+            },
+            "cpu": {
+              "type": "integer",
+              "title": "CPU units",
+              "minimum": 256,
+              "default": 512,
+              "description": "ECS Fargate CPU units. 256 = 0.25 vCPU, 512 = 0.5 vCPU, 1024 = 1 vCPU."
+            },
+            "memory": {
+              "type": "integer",
+              "title": "Memory (MiB)",
+              "minimum": 512,
+              "default": 1024,
+              "description": "Container memory in MiB. Must be compatible with the chosen CPU units."
+            },
             "instances": {
               "type": "object",
+              "title": "Instances",
+              "description": "Scaling configuration for the ECS service.",
               "additionalProperties": false,
+              "x-order": ["min"],
               "properties": {
-                "min": { "type": "integer", "minimum": 0, "description": "Minimum number of instances" }
+                "min": {
+                  "type": "integer",
+                  "title": "Minimum instances",
+                  "minimum": 0,
+                  "default": 1,
+                  "description": "Minimum number of running tasks. Set to 0 to allow scale-to-zero."
+                }
               }
             },
             "healthCheck": {
               "type": "object",
+              "title": "Health check",
+              "description": "ALB health check settings. The ALB pings this path; the service must return 200 OK.",
               "additionalProperties": false,
+              "x-order": ["path"],
               "properties": {
-                "path": { "type": "string", "description": "Health check path" }
+                "path": {
+                  "type": "string",
+                  "title": "Health check path",
+                  "default": "/health",
+                  "description": "HTTP path the ALB uses to verify the service is healthy. Must return 200 OK."
+                }
               }
             }
           }
         },
         "secrets": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "List of secret names to inject (values from environment)"
+          "title": "Secrets",
+          "description": "List of secret names to inject as environment variables. Values must be set as GitHub repo secrets; only names are stored in platform.yaml.",
+          "items": {
+            "type": "string",
+            "title": "Secret name",
+            "description": "Name of a GitHub repo secret (e.g. DATABASE_URL, API_KEY)."
+          }
         },
         "storage": {
           "type": "object",
-          "description": "EFS storage configuration",
+          "title": "Storage (EFS)",
+          "description": "Provisions an EFS (NFS) filesystem with mount targets and an access point. Containers or Lambdas can mount it for shared persistent storage.",
           "additionalProperties": false,
+          "x-order": ["efs"],
           "properties": {
             "efs": {
               "type": "object",
+              "title": "EFS configuration",
+              "description": "Amazon Elastic File System settings.",
               "additionalProperties": false,
+              "x-order": ["encrypted", "lifecycle", "accessPoint"],
               "properties": {
-                "encrypted": { "type": "boolean", "default": true },
-                "lifecycle": { "type": "string", "enum": ["AFTER_7_DAYS", "AFTER_14_DAYS", "AFTER_30_DAYS", "AFTER_90_DAYS"], "default": "AFTER_30_DAYS" },
+                "encrypted": {
+                  "type": "boolean",
+                  "title": "Encrypted",
+                  "default": true,
+                  "description": "Encrypt the EFS filesystem at rest."
+                },
+                "lifecycle": {
+                  "type": "string",
+                  "title": "Lifecycle policy",
+                  "enum": ["AFTER_7_DAYS", "AFTER_14_DAYS", "AFTER_30_DAYS", "AFTER_90_DAYS"],
+                  "default": "AFTER_30_DAYS",
+                  "description": "Move files to infrequent-access storage after this period of inactivity."
+                },
                 "accessPoint": {
                   "type": "object",
+                  "title": "Access point",
+                  "description": "EFS access point defines the root path and POSIX user for mounts.",
                   "additionalProperties": false,
+                  "x-order": ["path", "uid", "gid"],
                   "properties": {
-                    "path": { "type": "string", "default": "/data" },
-                    "uid": { "type": "integer", "default": 1000 },
-                    "gid": { "type": "integer", "default": 1000 }
+                    "path": {
+                      "type": "string",
+                      "title": "Mount path",
+                      "default": "/data",
+                      "description": "Root directory path within EFS that this access point exposes."
+                    },
+                    "uid": {
+                      "type": "integer",
+                      "title": "POSIX user ID (uid)",
+                      "default": 1000,
+                      "description": "POSIX user ID used for filesystem access (must match the container process user)."
+                    },
+                    "gid": {
+                      "type": "integer",
+                      "title": "POSIX group ID (gid)",
+                      "default": 1000,
+                      "description": "POSIX group ID used for filesystem access."
+                    }
                   }
                 }
               }
@@ -84,65 +175,160 @@
         },
         "cache": {
           "type": "object",
-          "description": "ElastiCache Redis configuration",
+          "title": "Cache (Redis)",
+          "description": "Creates an ElastiCache Redis cluster in the VPC. Use for sessions, rate limiting, pub/sub, or job queues.",
           "additionalProperties": false,
+          "x-order": ["engine", "nodeType", "numNodes"],
           "properties": {
-            "engine": { "type": "string", "enum": ["redis"], "default": "redis" },
-            "nodeType": { "type": "string", "default": "cache.t3.micro" },
-            "numNodes": { "type": "integer", "minimum": 1, "default": 1 }
+            "engine": {
+              "type": "string",
+              "title": "Engine",
+              "enum": ["redis"],
+              "default": "redis",
+              "description": "Cache engine. Only Redis is supported."
+            },
+            "nodeType": {
+              "type": "string",
+              "title": "Node type",
+              "default": "cache.t3.micro",
+              "description": "ElastiCache node instance type (e.g. cache.t3.micro, cache.r6g.large). Determines memory and performance."
+            },
+            "numNodes": {
+              "type": "integer",
+              "title": "Number of nodes",
+              "minimum": 1,
+              "default": 1,
+              "description": "Number of cache nodes. Use 1 for a single-node cluster (no replication)."
+            }
           }
         },
         "database": {
           "type": "object",
-          "description": "RDS PostgreSQL configuration",
+          "title": "Database (RDS Postgres)",
+          "description": "Creates an RDS PostgreSQL instance in the VPC. Not exposed to the internet. Accessible only from services in the same VPC.",
           "additionalProperties": false,
+          "x-order": ["engine", "instanceClass", "allocatedStorage", "dbName", "dbUsername"],
           "properties": {
-            "engine": { "type": "string", "enum": ["postgres"], "default": "postgres" },
-            "instanceClass": { "type": "string", "default": "db.t3.micro" },
-            "allocatedStorage": { "type": "integer", "minimum": 20, "default": 20 },
-            "dbName": { "type": "string", "description": "Database name (default from service name)" },
-            "dbUsername": { "type": "string", "description": "Master username (default from service name)" }
+            "engine": {
+              "type": "string",
+              "title": "Engine",
+              "enum": ["postgres"],
+              "default": "postgres",
+              "description": "Database engine. Only PostgreSQL is supported."
+            },
+            "instanceClass": {
+              "type": "string",
+              "title": "Instance class",
+              "default": "db.t3.micro",
+              "description": "RDS instance type (e.g. db.t3.micro, db.t3.small, db.r6g.large). Determines CPU, memory, and IOPS."
+            },
+            "allocatedStorage": {
+              "type": "integer",
+              "title": "Allocated storage (GiB)",
+              "minimum": 20,
+              "default": 20,
+              "description": "Initial storage size in GiB. Minimum 20 GiB. Storage can be increased later."
+            },
+            "dbName": {
+              "type": "string",
+              "title": "Database name",
+              "description": "Name of the initial database to create. Defaults to the service name if not set."
+            },
+            "dbUsername": {
+              "type": "string",
+              "title": "Master username",
+              "description": "Master database username. Defaults to the service name if not set."
+            }
           }
         },
         "serviceDiscovery": {
           "type": "object",
-          "description": "AWS Cloud Map service discovery configuration",
+          "title": "Service Discovery (Cloud Map)",
+          "description": "Creates an AWS Cloud Map private DNS namespace so services can find each other by name inside the VPC (e.g. my-service.agents.local).",
           "additionalProperties": false,
+          "x-order": ["namespace"],
           "properties": {
-            "namespace": { "type": "string", "description": "Private DNS namespace name" }
+            "namespace": {
+              "type": "string",
+              "title": "DNS namespace",
+              "description": "Private DNS namespace name (e.g. agents.local). Other services in the VPC can resolve names under this namespace."
+            }
           }
         },
         "triggers": {
           "type": "object",
-          "description": "Agent trigger infrastructure (EventBridge, webhooks)",
+          "title": "Triggers (EventBridge & Webhooks)",
+          "description": "Event-driven infrastructure: EventBridge Scheduler groups for scheduled tasks, and an optional webhook gateway for inbound HTTP events.",
           "additionalProperties": false,
+          "x-order": ["webhookGateway", "eventbridge"],
           "properties": {
-            "webhookGateway": { "type": "boolean", "default": false },
+            "webhookGateway": {
+              "type": "boolean",
+              "title": "Webhook gateway",
+              "default": false,
+              "description": "Enable an HTTP webhook endpoint that forwards inbound events to your service or Lambda functions."
+            },
             "eventbridge": {
               "type": "object",
+              "title": "EventBridge",
+              "description": "EventBridge Scheduler configuration for scheduled tasks.",
               "additionalProperties": false,
+              "x-order": ["scheduleGroup"],
               "properties": {
-                "scheduleGroup": { "type": "string", "description": "EventBridge Scheduler group name" }
+                "scheduleGroup": {
+                  "type": "string",
+                  "title": "Schedule group name",
+                  "description": "EventBridge Scheduler group name. Schedules in this group will be associated with this service."
+                }
               }
             }
           }
         },
         "lambda": {
           "type": "object",
-          "description": "Lambda function configuration",
+          "title": "Lambda functions",
+          "description": "Container-image Lambda functions. Each function is deployed as a separate Lambda using a Docker image from ECR.",
           "additionalProperties": false,
+          "x-order": ["functions"],
           "properties": {
             "functions": {
               "type": "array",
+              "title": "Functions",
+              "description": "List of Lambda functions to provision. Each entry defines a function name, container image, memory, and timeout.",
               "items": {
                 "type": "object",
+                "title": "Lambda function",
+                "description": "A single Lambda function definition.",
                 "additionalProperties": false,
                 "required": ["name", "image"],
+                "x-order": ["name", "image", "memory", "timeout"],
                 "properties": {
-                  "name": { "type": "string", "minLength": 1 },
-                  "image": { "type": "string", "minLength": 1 },
-                  "memory": { "type": "integer", "minimum": 128, "default": 2048 },
-                  "timeout": { "type": "integer", "minimum": 1, "default": 120 }
+                  "name": {
+                    "type": "string",
+                    "title": "Function name",
+                    "minLength": 1,
+                    "description": "Unique name for this Lambda function within the service."
+                  },
+                  "image": {
+                    "type": "string",
+                    "title": "Container image",
+                    "minLength": 1,
+                    "description": "ECR image name (without tag or registry prefix). The platform engine resolves the full ECR URI."
+                  },
+                  "memory": {
+                    "type": "integer",
+                    "title": "Memory (MiB)",
+                    "minimum": 128,
+                    "default": 2048,
+                    "description": "Lambda memory allocation in MiB. Also proportionally determines CPU. Min 128."
+                  },
+                  "timeout": {
+                    "type": "integer",
+                    "title": "Timeout (seconds)",
+                    "minimum": 1,
+                    "default": 120,
+                    "description": "Maximum execution duration in seconds before the Lambda is terminated. Max 900."
+                  }
                 }
               }
             }
