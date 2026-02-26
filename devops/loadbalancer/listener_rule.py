@@ -9,8 +9,8 @@ from devops.config import PlatformConfig
 
 
 def _listener_rule_priority(service_name: str) -> int:
-    """Stable priority 200-90200 from service name hash."""
-    return 200 + (int(hashlib.md5(service_name.encode()).hexdigest()[:4], 16) % 90000)
+    """Stable priority 200-49999 from service name hash (ALB limit is 1-50000)."""
+    return 200 + (int(hashlib.md5(service_name.encode()).hexdigest()[:4], 16) % 49800)
 
 
 def create_listener_rule(
