@@ -1,0 +1,18 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: compute-agentcore-test
+  description: Test fixture for compute + AgentCore IAM wiring
+spec:
+  compute:
+    port: 3000
+    cpu: 256
+    memory: 512
+    instances:
+      min: 1
+    healthCheck:
+      path: /health
+  agentcoreRuntime:
+    runtimes:
+      - name: test_agent
+        image: test-agent

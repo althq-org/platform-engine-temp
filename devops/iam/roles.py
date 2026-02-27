@@ -240,3 +240,73 @@ def create_agent_task_role(
         opts=pulumi.ResourceOptions(provider=aws_provider),
     )
     return role
+
+
+def create_agentcore_runtime_role(
+    service_name: str,
+    aws_provider: pulumi_aws.Provider,
+) -> pulumi_aws.iam.Role:
+    """Create IAM role trusted by bedrock-agentcore.amazonaws.com with ECR pull and CloudWatch Logs."""
+    assume_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": "sts:AssumeRole",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
+                }
+            ],
+        }
+    )
+    role = pulumi_aws.iam.Role(
+        f"{service_name}_agentcore_runtime_role",
+        name=f"{service_name}-agentcore-runtime",
+        assume_role_policy=assume_policy,
+        opts=pulumi.ResourceOptions(provider=aws_provider),
+    )
+    pulumi_aws.iam.RolePolicyAttachment(
+        f"{service_name}_agentcore_ecr",
+        role=role.name,
+        policy_arn="arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+        opts=pulumi.ResourceOptions(provider=aws_provider),
+    )
+    pulumi_aws.iam.RolePolicyAttachment(
+        f"{service_name}_agentcore_logs",
+        role=role.name,
+        policy_arn="arn:aws:iam::aws:policy/CloudWatchLogsFullAccess",
+        opts=pulumi.ResourceOptions(provider=aws_provider),
+    )
+    return role
+
+
+def create_agentcore_memory_role(
+    service_name: str,
+    aws_provider: pulumi_aws.Provider,
+) -> pulumi_aws.iam.Role:
+    """Create IAM execution role for AgentCore Memory strategies (Bedrock model inference)."""
+    assume_policy = json.dumps(
+        {
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Action": "sts:AssumeRole",
+                    "Effect": "Allow",
+                    "Principal": {"Service": "bedrock-agentcore.amazonaws.com"},
+                }
+            ],
+        }
+    )
+    role = pulumi_aws.iam.Role(
+        f"{service_name}_agentcore_memory_role",
+        name=f"{service_name}-agentcore-memory-exec",
+        assume_role_policy=assume_policy,
+        opts=pulumi.ResourceOptions(provider=aws_provider),
+    )
+    pulumi_aws.iam.RolePolicyAttachment(
+        f"{service_name}_agentcore_memory_inference",
+        role=role.name,
+        policy_arn="arn:aws:iam::aws:policy/AmazonBedrockAgentCoreMemoryBedrockModelInferenceExecutionRolePolicy",
+        opts=pulumi.ResourceOptions(provider=aws_provider),
+    )
+    return role

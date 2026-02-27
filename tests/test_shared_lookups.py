@@ -15,7 +15,9 @@ from devops.shared.lookups import SharedInfrastructure, lookup_shared_infrastruc
 @patch("devops.shared.lookups.pulumi_aws.ec2.get_vpc")
 @patch("devops.shared.lookups.pulumi_aws.ec2.get_subnet")
 @patch("devops.shared.lookups.pulumi_aws.ec2.get_subnets")
+@patch("devops.shared.lookups.pulumi_aws.get_caller_identity")
 def test_lookup_shared_infrastructure(
+    mock_get_caller: MagicMock,
     mock_get_subnets: MagicMock,
     mock_get_subnet: MagicMock,
     mock_get_vpc: MagicMock,
@@ -26,6 +28,7 @@ def test_lookup_shared_infrastructure(
     mock_get_zone: MagicMock,
 ) -> None:
     """Test successful lookup of all shared resources."""
+    mock_get_caller.return_value.account_id = "470935583836"
     mock_get_subnets.return_value.ids = ["subnet-1", "subnet-2"]
     mock_get_subnet.return_value.vpc_id = "vpc-123"
     mock_get_vpc.return_value.id = "vpc-123"
@@ -42,6 +45,7 @@ def test_lookup_shared_infrastructure(
     infra = lookup_shared_infrastructure(aws_provider)
 
     assert isinstance(infra, SharedInfrastructure)
+    assert infra.aws_account_id == "470935583836"
     assert infra.vpc_id == "vpc-123"
     assert infra.vpc_cidr == "10.0.0.0/16"
     assert infra.private_subnet_ids == ["subnet-1", "subnet-2"]
@@ -52,9 +56,14 @@ def test_lookup_shared_infrastructure(
     assert infra.zone_name == "althq-dev.com"
 
 
+@patch("devops.shared.lookups.pulumi_aws.get_caller_identity")
 @patch("devops.shared.lookups.pulumi_aws.ec2.get_subnets")
-def test_lookup_no_private_subnets(mock_get_subnets: MagicMock) -> None:
+def test_lookup_no_private_subnets(
+    mock_get_subnets: MagicMock,
+    mock_get_caller: MagicMock,
+) -> None:
     """Test error when no private subnets found."""
+    mock_get_caller.return_value.account_id = "123456789012"
     mock_get_subnets.return_value.ids = []
 
     aws_provider = MagicMock()

@@ -486,6 +486,177 @@
               "description": "Name for the EventBridge Scheduler group (e.g. my-service-schedules). After provisioning, add individual schedules to this group via the AWS console or CLI \u2014 no redeploy needed per schedule. Defaults to <service-name>-schedules if omitted."
             }
           }
+        },
+        "s3": {
+          "type": "object",
+          "title": "Object Storage (S3)",
+          "description": "Creates S3 buckets for file and object storage. The engine auto-prefixes bucket names with the AWS account ID for global uniqueness.",
+          "additionalProperties": false,
+          "required": ["buckets"],
+          "x-order": ["buckets"],
+          "properties": {
+            "buckets": {
+              "type": "array",
+              "title": "Buckets",
+              "description": "One or more S3 buckets to create. The engine prefixes each name with the AWS account ID for global uniqueness.",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "title": "Bucket",
+                "additionalProperties": false,
+                "required": ["name"],
+                "x-order": ["name", "versioning", "encryption", "lifecycleRules"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "title": "Bucket name (logical)",
+                    "minLength": 3,
+                    "maxLength": 50,
+                    "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+                    "description": "Logical bucket name. The engine prepends the AWS account ID to create the real bucket name ({account_id}-{name})."
+                  },
+                  "versioning": {
+                    "type": "boolean",
+                    "title": "Versioning",
+                    "default": false,
+                    "description": "Enable S3 versioning to keep previous versions of every object."
+                  },
+                  "encryption": {
+                    "type": "string",
+                    "title": "Encryption",
+                    "enum": ["AES256", "aws:kms"],
+                    "default": "AES256",
+                    "description": "Server-side encryption method. AES256 (SSE-S3) is free and transparent."
+                  },
+                  "lifecycleRules": {
+                    "type": "array",
+                    "title": "Lifecycle rules",
+                    "description": "Optional rules to automatically transition or expire objects.",
+                    "items": {
+                      "type": "object",
+                      "title": "Lifecycle rule",
+                      "additionalProperties": false,
+                      "required": ["prefix"],
+                      "x-order": ["prefix", "transitionToIA", "expirationDays"],
+                      "properties": {
+                        "prefix": {
+                          "type": "string",
+                          "title": "Object prefix",
+                          "description": "S3 key prefix this rule applies to. Use empty string for all objects."
+                        },
+                        "transitionToIA": {
+                          "type": "integer",
+                          "title": "Transition to Infrequent Access (days)",
+                          "minimum": 1,
+                          "description": "Move objects to S3 Infrequent Access after this many days."
+                        },
+                        "expirationDays": {
+                          "type": "integer",
+                          "title": "Expire after (days)",
+                          "minimum": 1,
+                          "description": "Permanently delete objects after this many days."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "agentcoreRuntime": {
+          "type": "object",
+          "title": "AI Agent Compute (AgentCore Runtime)",
+          "description": "Creates AWS Bedrock AgentCore Runtime definitions for AI agents. Sessions run in isolated microVMs with consumption-based pricing.",
+          "additionalProperties": false,
+          "required": ["runtimes"],
+          "x-order": ["runtimes", "authorizer"],
+          "properties": {
+            "runtimes": {
+              "type": "array",
+              "title": "Runtimes",
+              "description": "One or more AgentCore Runtime definitions.",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "title": "Runtime",
+                "additionalProperties": false,
+                "required": ["name", "image"],
+                "x-order": ["name", "image", "description", "networkMode", "environmentVariables"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "title": "Runtime name",
+                    "minLength": 1,
+                    "maxLength": 48,
+                    "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+                    "description": "Unique name for this runtime. Must start with a letter, followed by letters, numbers, or underscores (AWS naming constraint)."
+                  },
+                  "image": {
+                    "type": "string",
+                    "title": "ECR image name",
+                    "minLength": 1,
+                    "description": "ECR repository name for this runtime's container image (without tag or registry prefix)."
+                  },
+                  "description": {
+                    "type": "string",
+                    "title": "Description",
+                    "maxLength": 1200,
+                    "description": "Optional human-readable description."
+                  },
+                  "networkMode": {
+                    "type": "string",
+                    "title": "Network mode",
+                    "enum": ["PUBLIC", "VPC"],
+                    "default": "PUBLIC",
+                    "description": "PUBLIC: internet access. VPC: runs in private subnets for VPC-internal resources."
+                  },
+                  "environmentVariables": {
+                    "type": "object",
+                    "title": "Environment variables",
+                    "description": "Key-value pairs injected as environment variables. Secrets go in the top-level secrets section.",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "authorizer": {
+              "type": "object",
+              "title": "Authorizer",
+              "description": "Optional JWT authorizer for request validation.",
+              "additionalProperties": false,
+              "x-order": ["type", "discoveryUrl", "allowedAudiences", "allowedClients"],
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "title": "Authorizer type",
+                  "enum": ["jwt"],
+                  "default": "jwt",
+                  "description": "Authorization method. Only JWT is supported."
+                },
+                "discoveryUrl": {
+                  "type": "string",
+                  "title": "OIDC discovery URL",
+                  "format": "uri",
+                  "description": "OpenID Connect discovery endpoint for JWT validation."
+                },
+                "allowedAudiences": {
+                  "type": "array",
+                  "title": "Allowed audiences",
+                  "description": "Accepted 'aud' values in the JWT.",
+                  "items": { "type": "string" }
+                },
+                "allowedClients": {
+                  "type": "array",
+                  "title": "Allowed clients",
+                  "description": "Optional accepted 'azp' or 'client_id' values.",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
         }
       }
     }

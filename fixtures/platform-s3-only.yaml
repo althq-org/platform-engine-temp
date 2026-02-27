@@ -1,0 +1,15 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: s3-only-test
+  description: Test fixture for S3 capability in isolation
+spec:
+  s3:
+    buckets:
+      - name: s3-only-test-uploads
+        versioning: true
+      - name: s3-only-test-logs
+        lifecycleRules:
+          - prefix: ""
+            transitionToIA: 30
+            expirationDays: 365

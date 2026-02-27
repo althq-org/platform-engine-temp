@@ -1,0 +1,13 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: agentcore-only-test
+  description: Test fixture for AgentCore Runtime in isolation
+spec:
+  agentcoreRuntime:
+    runtimes:
+      - name: test_agent
+        image: test-agent
+        networkMode: PUBLIC
+        environmentVariables:
+          LOG_LEVEL: debug

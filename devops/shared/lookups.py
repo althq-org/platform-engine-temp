@@ -11,6 +11,7 @@ import pulumi_cloudflare
 class SharedInfrastructure:
     """Shared resources used by all platform services."""
 
+    aws_account_id: str
     vpc_id: str
     vpc_cidr: str
     private_subnet_ids: list[str]
@@ -31,6 +32,11 @@ def lookup_shared_infrastructure(
     Returns dataclass with all shared resource identifiers.
     Does not create any resources.
     """
+    # AWS account ID (for S3 bucket name prefixing)
+    caller_identity = pulumi_aws.get_caller_identity(
+        opts=pulumi.InvokeOptions(provider=aws_provider),
+    )
+
     # Private subnets
     private_subnets = pulumi_aws.ec2.get_subnets(
         filters=[pulumi_aws.ec2.GetSubnetsFilterArgs(name="tag:network", values=["private"])],
@@ -79,6 +85,7 @@ def lookup_shared_infrastructure(
     account_id: str = str(_account_id() if callable(_account_id) else _account_id)
 
     return SharedInfrastructure(
+        aws_account_id=caller_identity.account_id,
         vpc_id=vpc.id,
         vpc_cidr=vpc.cidr_block,
         private_subnet_ids=list(private_subnets.ids),

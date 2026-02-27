@@ -11,6 +11,7 @@ venv/
 
 # Pulumi
 .devops/
+devops/Pulumi.dev.*.yaml
 *.pyc
 
 # IDE

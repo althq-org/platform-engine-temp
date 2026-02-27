@@ -5,6 +5,7 @@ Loads config, validates capability requirements, runs foundation then capability
 
 import pulumi
 
+import devops.capabilities.agentcore_runtime
 import devops.capabilities.cache
 
 # Register capability handlers (import side-effect)
@@ -16,6 +17,7 @@ import devops.capabilities.eventbridge
 from devops.capabilities.foundation import provision_foundation
 import devops.capabilities.lambda_functions
 from devops.capabilities.registry import CAPABILITIES, Phase
+import devops.capabilities.s3
 import devops.capabilities.service_discovery
 import devops.capabilities.storage
 from devops.config import create_aws_provider, load_platform_config

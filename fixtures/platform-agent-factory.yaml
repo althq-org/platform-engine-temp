@@ -2,7 +2,7 @@ apiVersion: platform.althq.com/v1
 kind: Service
 metadata:
   name: agent-factory
-  description: Autonomous AI agent platform. TanStack Start app + Fargate autonomous tasks + EFS agent memory.
+  description: AI agent platform. TanStack Start orchestrator + AgentCore Runtime agents.
 
 spec:
   compute:
@@ -29,22 +29,33 @@ spec:
         sortKey: session_sk
         ttlAttribute: expires_at
 
-  storage:
-    efs:
-      encrypted: true
-      lifecycle: AFTER_30_DAYS
-      accessPoint:
-        path: /agent-factory
-        uid: 1000
-        gid: 1000
+  s3:
+    buckets:
+      - name: agent-factory-state
+        versioning: true
+
+  agentcoreRuntime:
+    runtimes:
+      - name: claude_agent
+        image: claude-agent
+        description: Claude Agent SDK runtime (chat + autonomous)
+        networkMode: PUBLIC
+        environmentVariables:
+          WORK_DIR: /tmp/agent
+      - name: pi_agent
+        image: pi-agent
+        description: Pi Agent runtime (chat + autonomous)
+        networkMode: PUBLIC
+        environmentVariables:
+          WORK_DIR: /tmp/agent
+    authorizer:
+      type: jwt
+      discoveryUrl: https://accounts.google.com/.well-known/openid-configuration
+      allowedAudiences:
+        - agent-factory
 
   serviceDiscovery:
     namespace: agents.local
 
   eventbridge:
     scheduleGroup: agent-factory
-
-  secrets:
-    - ANTHROPIC_API_KEY
-    - GITHUB_PAT
-    - MEMORY_REPO_URL

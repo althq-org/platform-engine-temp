@@ -84,6 +84,49 @@ class EventBridgeConfig:
 
 
 @dataclass
+class S3LifecycleRuleConfig:
+    prefix: str = ""
+    transition_to_ia: int | None = None
+    expiration_days: int | None = None
+
+
+@dataclass
+class S3BucketConfig:
+    name: str  # Logical name from YAML. Real bucket = {account_id}-{name}.
+    versioning: bool = False
+    encryption: str = "AES256"
+    lifecycle_rules: list[S3LifecycleRuleConfig] = field(default_factory=list)
+
+
+@dataclass
+class S3Config:
+    buckets: list[S3BucketConfig] = field(default_factory=list)
+
+
+@dataclass
+class AgentCoreRuntimeDefConfig:
+    name: str
+    image: str
+    description: str = ""
+    network_mode: str = "PUBLIC"
+    environment_variables: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class AgentCoreAuthorizerConfig:
+    type: str = "jwt"
+    discovery_url: str = ""
+    allowed_audiences: list[str] = field(default_factory=list)
+    allowed_clients: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AgentCoreRuntimeConfig:
+    runtimes: list[AgentCoreRuntimeDefConfig] = field(default_factory=list)
+    authorizer: AgentCoreAuthorizerConfig | None = None
+
+
+@dataclass
 class PlatformConfig:
     """Parsed and validated platform.yaml configuration."""
 
@@ -98,6 +141,8 @@ class PlatformConfig:
     lambda_config: LambdaConfig | None = None
     webhook_gateway: WebhookGatewayConfig | None = None
     eventbridge: EventBridgeConfig | None = None
+    s3: S3Config | None = None
+    agentcore_runtime: AgentCoreRuntimeConfig | None = None
     secrets: list[str] = field(default_factory=list)
 
     # Backward-compat: delegate to compute when present
@@ -133,6 +178,8 @@ class PlatformConfig:
             "serviceDiscovery",
             "lambda",
             "eventbridge",
+            "s3",
+            "agentcoreRuntime",
         ]
         return {
             k: self.raw_spec[k]
@@ -236,6 +283,52 @@ class PlatformConfig:
                 schedule_group=eb.get("scheduleGroup"),
             )
 
+        s3_config = None
+        if "s3" in spec and spec["s3"] is not None:
+            s3_raw = spec["s3"]
+            buckets = []
+            for b in s3_raw.get("buckets", []):
+                rules = []
+                for r in b.get("lifecycleRules", []):
+                    rules.append(S3LifecycleRuleConfig(
+                        prefix=r.get("prefix", ""),
+                        transition_to_ia=r.get("transitionToIA"),
+                        expiration_days=r.get("expirationDays"),
+                    ))
+                buckets.append(S3BucketConfig(
+                    name=b["name"],
+                    versioning=b.get("versioning", False),
+                    encryption=b.get("encryption", "AES256"),
+                    lifecycle_rules=rules,
+                ))
+            s3_config = S3Config(buckets=buckets)
+
+        agentcore_runtime = None
+        if "agentcoreRuntime" in spec and spec["agentcoreRuntime"] is not None:
+            ac = spec["agentcoreRuntime"]
+            runtimes = []
+            for rt in ac.get("runtimes", []):
+                runtimes.append(AgentCoreRuntimeDefConfig(
+                    name=rt["name"],
+                    image=rt["image"],
+                    description=rt.get("description", ""),
+                    network_mode=rt.get("networkMode", "PUBLIC"),
+                    environment_variables=rt.get("environmentVariables", {}),
+                ))
+            authorizer = None
+            auth_raw = ac.get("authorizer")
+            if auth_raw:
+                authorizer = AgentCoreAuthorizerConfig(
+                    type=auth_raw.get("type", "jwt"),
+                    discovery_url=auth_raw.get("discoveryUrl", ""),
+                    allowed_audiences=auth_raw.get("allowedAudiences", []),
+                    allowed_clients=auth_raw.get("allowedClients", []),
+                )
+            agentcore_runtime = AgentCoreRuntimeConfig(
+                runtimes=runtimes,
+                authorizer=authorizer,
+            )
+
         return cls(
             service_name=metadata["name"],
             region=region,
@@ -248,6 +341,8 @@ class PlatformConfig:
             lambda_config=lambda_config,
             webhook_gateway=webhook_gateway,
             eventbridge=eventbridge,
+            s3=s3_config,
+            agentcore_runtime=agentcore_runtime,
             secrets=spec.get("secrets", []),
         )
 

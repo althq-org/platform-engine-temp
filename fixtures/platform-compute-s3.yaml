@@ -1,0 +1,17 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: compute-s3-test
+  description: Test fixture for compute + S3 IAM wiring
+spec:
+  compute:
+    port: 3000
+    cpu: 256
+    memory: 512
+    instances:
+      min: 1
+    healthCheck:
+      path: /health
+  s3:
+    buckets:
+      - name: compute-s3-test-uploads

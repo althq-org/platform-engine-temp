@@ -1,0 +1,15 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: dynamodb-agentcore-test
+  description: Test fixture for DynamoDB + AgentCore cross-capability IAM wiring
+spec:
+  dynamodb:
+    tables:
+      - name: dynamodb-agentcore-test-jobs
+        partitionKey: job_id
+        ttlAttribute: expires_at
+  agentcoreRuntime:
+    runtimes:
+      - name: test_agent
+        image: test-agent

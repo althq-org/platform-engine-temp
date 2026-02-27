@@ -1,0 +1,16 @@
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: s3-agentcore-test
+  description: Test fixture for S3 + AgentCore cross-capability IAM wiring
+spec:
+  s3:
+    buckets:
+      - name: s3-agentcore-test-state
+        versioning: true
+  agentcoreRuntime:
+    runtimes:
+      - name: test_agent
+        image: test-agent
+        environmentVariables:
+          WORK_DIR: /tmp/agent

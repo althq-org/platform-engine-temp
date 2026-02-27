@@ -65,3 +65,15 @@ def provision_foundation(spec_sections: dict, ctx: CapabilityContext) -> None:
 
         lambda_role = create_lambda_execution_role(service_name, aws_provider)
         ctx.set("iam.lambda_execution_role", lambda_role)
+
+    if "agentcoreRuntime" in declared:
+        from devops.iam.roles import (
+            create_agentcore_memory_role,
+            create_agentcore_runtime_role,
+        )
+
+        agentcore_role = create_agentcore_runtime_role(service_name, aws_provider)
+        ctx.set("iam.agentcore_runtime_role", agentcore_role)
+
+        memory_role = create_agentcore_memory_role(service_name, aws_provider)
+        ctx.set("iam.agentcore_memory_role", memory_role)

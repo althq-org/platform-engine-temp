@@ -90,3 +90,26 @@ def dynamodb_handler(
             policy=policy_doc,
             opts=pulumi.ResourceOptions(provider=ctx.aws_provider),
         )
+
+    agentcore_role = ctx.get("iam.agentcore_runtime_role")
+    if agentcore_role is not None:
+        agentcore_policy_doc = pulumi.Output.all(*table_arns).apply(
+            lambda arns: json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": "dynamodb:*",
+                            "Resource": arns + [f"{arn}/*" for arn in arns],
+                        }
+                    ],
+                }
+            )
+        )
+        pulumi_aws.iam.RolePolicy(
+            f"{service_name}_dynamodb_agentcore_policy",
+            role=agentcore_role.name,
+            policy=agentcore_policy_doc,
+            opts=pulumi.ResourceOptions(provider=ctx.aws_provider),
+        )
