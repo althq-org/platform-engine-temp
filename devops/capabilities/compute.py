@@ -51,12 +51,14 @@ def compute_handler(
         infra.zone_id,
         infra.cf_provider,
     )
+    public_paths: list[str] = section_config.get("publicPaths") or []
     create_access_application(
         config.service_name,
         infra.zone_id,
         infra.zone_name,
         infra.account_id,
         infra.cf_provider,
+        public_paths=public_paths or None,
     )
 
     container_secrets: list[dict[str, str]] = []

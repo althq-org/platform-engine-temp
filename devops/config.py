@@ -129,9 +129,9 @@ class PlatformConfig:
             "storage",
             "cache",
             "database",
+            "dynamodb",
             "serviceDiscovery",
             "lambda",
-            "webhookGateway",
             "eventbridge",
         ]
         return {

@@ -104,3 +104,44 @@ def test_validate_platform_spec_invalid_database_extra_field() -> None:
     with pytest.raises(Exception) as exc_info:
         validate_platform_spec(data)
     assert "typo" in str(exc_info.value).lower() or "additional" in str(exc_info.value).lower()
+
+
+def test_validate_platform_spec_dynamodb_requires_tables() -> None:
+    """DynamoDB section without tables raises ValidationError."""
+    data = {
+        "apiVersion": "platform.althq.com/v1",
+        "kind": "Service",
+        "metadata": {"name": "my-svc"},
+        "spec": {"dynamodb": {}},
+    }
+    with pytest.raises(Exception) as exc_info:
+        validate_platform_spec(data)
+    assert "tables" in str(exc_info.value).lower() or "required" in str(exc_info.value).lower()
+
+
+def test_validate_platform_spec_dynamodb_requires_at_least_one_table() -> None:
+    """DynamoDB tables array must have at least one entry."""
+    data = {
+        "apiVersion": "platform.althq.com/v1",
+        "kind": "Service",
+        "metadata": {"name": "my-svc"},
+        "spec": {"dynamodb": {"tables": []}},
+    }
+    with pytest.raises(Exception) as exc_info:
+        validate_platform_spec(data)
+    assert "minitems" in str(exc_info.value).lower() or "too short" in str(exc_info.value).lower() or "1" in str(exc_info.value)
+
+
+def test_validate_platform_spec_dynamodb_valid_table() -> None:
+    """DynamoDB with a valid table declaration passes validation."""
+    data = {
+        "apiVersion": "platform.althq.com/v1",
+        "kind": "Service",
+        "metadata": {"name": "my-svc"},
+        "spec": {
+            "dynamodb": {
+                "tables": [{"name": "my-svc-jobs", "partitionKey": "job_id"}]
+            }
+        },
+    }
+    validate_platform_spec(data)  # should not raise

@@ -11,13 +11,13 @@ import devops.capabilities.cache
 import devops.capabilities.compute
 from devops.capabilities.context import CapabilityContext
 import devops.capabilities.database
+import devops.capabilities.dynamodb
 import devops.capabilities.eventbridge
 from devops.capabilities.foundation import provision_foundation
 import devops.capabilities.lambda_functions
 from devops.capabilities.registry import CAPABILITIES, Phase
 import devops.capabilities.service_discovery
 import devops.capabilities.storage
-import devops.capabilities.webhook_gateway  # noqa: F401
 from devops.config import create_aws_provider, load_platform_config
 from devops.shared.lookups import lookup_shared_infrastructure
 

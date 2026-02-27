@@ -1,1 +1,1 @@
-"""Database resource modules (RDS PostgreSQL)."""
+"""Database resource modules: RDS PostgreSQL and DynamoDB."""

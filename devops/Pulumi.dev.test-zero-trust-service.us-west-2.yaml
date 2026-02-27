@@ -1,0 +1,4 @@
+config:
+  aws:region: us-west-2
+  platform-engine:PLATFORM_YAML_PATH: /Users/tuanvu/Workspace/althq-apps/platform-engine-temp/devops/../fixtures/platform-agent-factory.yaml
+encryptionsalt: v1:a6MLEezO1s0=:v1:YJsjEgUXHyOJDJcx:vL7IlIEeycTjUtcJF0VlVQomk6Rpcg==

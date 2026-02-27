@@ -24,14 +24,15 @@ You can include any subset. Order does not matter. All are optional in the schem
 
 ### compute
 
-| Field                | Type   | Default | Notes |
-|----------------------|--------|---------|--------|
-| `type`               | string | `ecs`   | Only `ecs` today. |
-| `port`               | int    | 80      | 1–65535. Container port. |
-| `cpu`                | int    | 256     | Min 256 (CPU units). |
-| `memory`             | int    | 512     | Min 512 (MiB). |
-| `instances.min`      | int    | 1       | Min 0. Minimum task count. |
-| `healthCheck.path`   | string | —       | HTTP path for ALB health checks. |
+| Field                | Type     | Default | Notes |
+|----------------------|----------|---------|--------|
+| `type`               | string   | `ecs`   | Only `ecs` today. |
+| `port`               | int      | 80      | 1–65535. Container port. |
+| `cpu`                | int      | 256     | Min 256 (CPU units). |
+| `memory`             | int      | 512     | Min 512 (MiB). |
+| `instances.min`      | int      | 1       | Min 0. Minimum task count. |
+| `healthCheck.path`   | string   | —       | HTTP path for ALB health checks. |
+| `publicPaths`        | string[] | —       | URL path patterns excluded from Zero Trust auth (e.g. `/webhooks/*`). All other paths require Google OAuth. Creates a Cloudflare bypass app per entry. |
 
 ### storage.efs
 
@@ -59,6 +60,20 @@ You can include any subset. Order does not matter. All are optional in the schem
 | `instanceClass`    | string | `db.t3.micro` | RDS instance class. |
 | `allocatedStorage`  | int    | 20            | Min 20 (GB). |
 
+### dynamodb.tables[]
+
+Each item:
+
+| Field              | Type   | Default            | Notes |
+|--------------------|--------|--------------------|-------|
+| `name`             | string | —                  | Required. Table name (e.g. `my-service-jobs`). |
+| `partitionKey`     | string | —                  | Required. Hash key attribute name. |
+| `partitionKeyType` | string | `S`                | `S` (String), `N` (Number), `B` (Binary). |
+| `sortKey`          | string | —                  | Optional. Range key attribute name. |
+| `sortKeyType`      | string | `S`                | Type of sort key. Only used if `sortKey` is set. |
+| `ttlAttribute`     | string | —                  | Optional. Attribute name for TTL expiry (Unix epoch seconds). DynamoDB auto-deletes expired items. |
+| `billingMode`      | string | `PAY_PER_REQUEST`  | `PAY_PER_REQUEST` (on-demand) or `PROVISIONED`. Start with on-demand. |
+
 ### serviceDiscovery
 
 | Field       | Type   | Notes |
@@ -76,12 +91,11 @@ Each item:
 | `memory` | int   | 2048    | Min 128. |
 | `timeout`| int   | 120     | Min 1 (seconds). |
 
-### triggers
+### eventbridge
 
 | Field                        | Type   | Default | Notes |
 |-----------------------------|--------|---------|--------|
-| `webhookGateway`            | bool   | false   | Enable webhook gateway (agent use). |
-| `eventbridge.scheduleGroup`| string | —       | Optional. EventBridge Scheduler group name. |
+| `eventbridge.scheduleGroup`| string | —       | Optional. EventBridge Scheduler group name (defaults to `<service>-schedules`). |
 
 ### secrets
 

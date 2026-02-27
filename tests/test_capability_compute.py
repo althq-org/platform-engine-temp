@@ -79,3 +79,73 @@ def test_compute_handler_exports_service_url_and_ecr_cluster_service(
     assert ctx.exports["ecr_repository_uri"] is not None
     assert ctx.exports["ecs_cluster_name"] is not None
     assert ctx.exports["ecs_service_name"] is not None
+
+
+@patch("devops.capabilities.compute.create_ecs_service")
+@patch("devops.capabilities.compute.create_task_definition")
+@patch("devops.capabilities.compute.create_access_application")
+@patch("devops.capabilities.compute.create_dns_record")
+@patch("devops.capabilities.compute.create_listener_rule")
+@patch("devops.capabilities.compute.create_target_group")
+@patch("devops.capabilities.compute.create_ecs_cluster")
+@patch("devops.capabilities.compute.create_ecr_repository")
+def test_compute_handler_passes_public_paths_to_access_application(
+    mock_ecr: MagicMock,
+    mock_cluster: MagicMock,
+    mock_tg: MagicMock,
+    mock_listener: MagicMock,
+    mock_dns: MagicMock,
+    mock_access: MagicMock,
+    mock_task_def: MagicMock,
+    mock_ecs_svc: MagicMock,
+) -> None:
+    """Compute handler passes publicPaths from section_config to create_access_application."""
+    mock_ecr.return_value = MagicMock(repository_url="123456.dkr.ecr.region.amazonaws.com/test-svc")
+    mock_cluster.return_value = MagicMock(name="test-svc")
+    mock_tg.return_value = MagicMock()
+    mock_listener.return_value = MagicMock()
+    mock_task_def.return_value = MagicMock()
+    mock_ecs_svc.return_value = MagicMock(name="test-svc")
+
+    ctx = _make_ctx_with_foundation_outputs()
+    handler = CAPABILITIES["compute"].handler
+    handler({"publicPaths": ["/webhooks/*", "/api/public/*"]}, ctx)
+
+    mock_access.assert_called_once()
+    call_kw = mock_access.call_args[1]
+    assert call_kw["public_paths"] == ["/webhooks/*", "/api/public/*"]
+
+
+@patch("devops.capabilities.compute.create_ecs_service")
+@patch("devops.capabilities.compute.create_task_definition")
+@patch("devops.capabilities.compute.create_access_application")
+@patch("devops.capabilities.compute.create_dns_record")
+@patch("devops.capabilities.compute.create_listener_rule")
+@patch("devops.capabilities.compute.create_target_group")
+@patch("devops.capabilities.compute.create_ecs_cluster")
+@patch("devops.capabilities.compute.create_ecr_repository")
+def test_compute_handler_no_public_paths_passes_none(
+    mock_ecr: MagicMock,
+    mock_cluster: MagicMock,
+    mock_tg: MagicMock,
+    mock_listener: MagicMock,
+    mock_dns: MagicMock,
+    mock_access: MagicMock,
+    mock_task_def: MagicMock,
+    mock_ecs_svc: MagicMock,
+) -> None:
+    """Compute handler passes public_paths=None to create_access_application when publicPaths is absent."""
+    mock_ecr.return_value = MagicMock(repository_url="123456.dkr.ecr.region.amazonaws.com/test-svc")
+    mock_cluster.return_value = MagicMock(name="test-svc")
+    mock_tg.return_value = MagicMock()
+    mock_listener.return_value = MagicMock()
+    mock_task_def.return_value = MagicMock()
+    mock_ecs_svc.return_value = MagicMock(name="test-svc")
+
+    ctx = _make_ctx_with_foundation_outputs()
+    handler = CAPABILITIES["compute"].handler
+    handler({}, ctx)
+
+    mock_access.assert_called_once()
+    call_kw = mock_access.call_args[1]
+    assert call_kw["public_paths"] is None

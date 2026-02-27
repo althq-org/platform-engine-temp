@@ -6,7 +6,7 @@ Each section in `spec` enables a capability. Only declared sections are provisio
 
 ## compute
 
-**What it does:** Runs your app as an ECS Fargate service. Creates ECR repo, ECS cluster, target group, ALB listener rule, DNS, and Cloudflare Access.
+**What it does:** Runs your app as an ECS Fargate service. Creates ECR repo, ECS cluster, target group, ALB listener rule, DNS, and Cloudflare Zero Trust Access (Google OAuth required for all paths by default).
 
 **When to use:** Any service that needs a long-running container (web app, API, worker).
 
@@ -25,6 +25,24 @@ spec:
 ```
 
 **Key fields:** `port`, `cpu`, `memory`, `instances.min`, `healthCheck.path`.
+
+### publicPaths
+
+Use `publicPaths` when specific routes need to be reachable without Zero Trust authentication — for example, webhook receivers that external systems call, or OAuth redirect URIs. All other paths still require Google OAuth via Zero Trust.
+
+Cloudflare uses longest-path matching: path-specific bypass applications (created per entry) take precedence over the catch-all Google OAuth app.
+
+```yaml
+spec:
+  compute:
+    port: 3000
+    publicPaths:
+      - /webhooks/*
+      - /api/public/*
+      - /oauth/callback
+```
+
+**You still implement the routes in your app.** This only tells Cloudflare to let unauthenticated requests reach those paths — your app receives them normally.
 
 ---
 
@@ -92,6 +110,37 @@ spec:
 
 ---
 
+## dynamodb
+
+**What it does:** Grants the ECS task full DynamoDB access (`dynamodb:*`) scoped to the declared table names. Your application is responsible for creating the tables at startup (e.g. `CreateTable` with `if not exists` semantics — the AWS SDK call is idempotent once the table exists). The platform provisions IAM only — not the tables themselves.
+
+**When to use:** You need a fast, flexible key-value or document store and don't want to manage a database cluster. Great for job state, agent registries, conversation history, feature flags. Use `database` (RDS) instead if you need SQL, joins, or complex transactions.
+
+**IAM boundary:** The task role gets `dynamodb:*` on exactly the declared table ARNs (plus their index and stream sub-resources). Tables not listed here are not accessible from the task role.
+
+**Example:**
+
+```yaml
+spec:
+  dynamodb:
+    tables:
+      - name: my-service-jobs
+        partitionKey: job_id
+        ttlAttribute: expires_at
+
+      - name: my-service-sessions
+        partitionKey: user_id
+        sortKey: session_sk
+        ttlAttribute: expires_at
+
+      - name: my-service-registry
+        partitionKey: item_id
+```
+
+**Key fields per table:** `name`, `partitionKey` (required). Optional: `sortKey`, `ttlAttribute`, `billingMode` (default `PAY_PER_REQUEST`). At least one table must be declared.
+
+---
+
 ## serviceDiscovery
 
 **What it does:** Creates an AWS Cloud Map private DNS namespace (and a discovery service). Lets services find each other by name inside the VPC.
@@ -130,23 +179,6 @@ spec:
 ```
 
 **Key fields per function:** `name`, `image` (ECR repo suffix), `memory`, `timeout`.
-
----
-
-## webhookGateway
-
-**What it does:** Provisions an inbound HTTP endpoint that receives events from external systems (Slack, GitHub, Stripe, etc.) and forwards them to your service. The URL is stable and provisioned once — you give it to senders as their webhook URL.
-
-**When to use:** Your service needs to receive HTTP POST events from external sources.
-
-**Example:**
-
-```yaml
-spec:
-  webhookGateway: {}
-```
-
-No configuration fields are required — enabling it is enough.
 
 ---
 

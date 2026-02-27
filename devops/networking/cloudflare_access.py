@@ -3,15 +3,21 @@
 Reuses the existing Google OAuth identity provider (same as althq-services):
 looks up by name "{environment} althq-frontend Pages Previews", then creates
 only the per-service Access policy and Access application. No client_id/secret needed.
+
+Public paths (compute.publicPaths in platform.yaml) get separate bypass applications
+with higher path specificity, allowing unauthenticated access to those routes (e.g.
+webhook receivers, OAuth callbacks). All other paths require Google OAuth.
 """
+
+import re
 
 import pulumi
 import pulumi_cloudflare
 
 
-def _sanitize_resource_name(service_name: str) -> str:
-    """Sanitize service name for use in Pulumi resource logical names."""
-    return service_name.replace(".", "_").replace("/", "_")
+def _sanitize_resource_name(name: str) -> str:
+    """Sanitize a name for use in Pulumi resource logical names."""
+    return re.sub(r"[^a-zA-Z0-9_]", "_", name)
 
 
 def _get_environment() -> str:
@@ -26,11 +32,17 @@ def create_access_application(
     zone_name: str,
     account_id: str,
     cf_provider: pulumi_cloudflare.Provider,
+    public_paths: list[str] | None = None,
 ) -> pulumi_cloudflare.ZeroTrustAccessApplication:
     """Create Cloudflare Zero Trust policy and access app for a platform service.
 
     Reuses the existing Google OAuth IDP (lookup by name, same as althq-services).
     No google_oauth client_id/secret config required.
+
+    If public_paths is provided, creates additional bypass applications for those
+    path patterns so external systems (webhook senders, OAuth redirects, etc.) can
+    reach those routes without Zero Trust auth. The path-specific apps take
+    precedence over the catch-all app due to Cloudflare's longest-match routing.
     """
     safe = _sanitize_resource_name(service_name)
     environment = _get_environment()
@@ -88,5 +100,41 @@ def create_access_application(
         ],
         opts=pulumi.ResourceOptions(provider=cf_provider),
     )
+
+    # Create bypass applications for each public path. Cloudflare uses longest-path
+    # matching, so these path-specific apps take precedence over the catch-all above.
+    for path in public_paths or []:
+        path_safe = _sanitize_resource_name(path)
+        bypass_policy = pulumi_cloudflare.ZeroTrustAccessPolicy(
+            f"{safe}_{path_safe}_bypass_policy",
+            name=f"Platform {service_name} {path} (public bypass)",
+            account_id=account_id,
+            decision="bypass",
+            includes=[
+                pulumi_cloudflare.ZeroTrustAccessPolicyIncludeArgs(
+                    everyone={},
+                ),
+            ],
+            opts=pulumi.ResourceOptions(provider=cf_provider),
+        )
+        pulumi_cloudflare.ZeroTrustAccessApplication(
+            f"{safe}_{path_safe}_bypass_app",
+            destinations=[
+                pulumi_cloudflare.ZeroTrustAccessApplicationDestinationArgs(
+                    uri=f"{service_name}.{zone_name}{path}",
+                )
+            ],
+            name=f"Platform {service_name} {path} (public)",
+            session_duration="0s",
+            type="self_hosted",
+            account_id=account_id,
+            app_launcher_visible=False,
+            policies=[
+                pulumi_cloudflare.ZeroTrustAccessApplicationPolicyArgs(
+                    id=bypass_policy.id,
+                ),
+            ],
+            opts=pulumi.ResourceOptions(provider=cf_provider),
+        )
 
     return access_app

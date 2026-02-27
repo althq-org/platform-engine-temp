@@ -2,18 +2,32 @@ apiVersion: platform.althq.com/v1
 kind: Service
 metadata:
   name: agent-factory
-  description: Agent Factory - AI agent provisioning and orchestration platform
+  description: Autonomous AI agent platform. TanStack Start app + Fargate autonomous tasks + EFS agent memory.
 
 spec:
   compute:
     type: ecs
-    port: 80
+    port: 3000
     cpu: 512
     memory: 1024
     instances:
       min: 1
     healthCheck:
       path: /health
+    publicPaths:
+      - /webhooks/*
+
+  dynamodb:
+    tables:
+      - name: agent-factory-agents
+        partitionKey: agent_id
+      - name: agent-factory-jobs
+        partitionKey: job_id
+        ttlAttribute: expires_at
+      - name: agent-factory-conversations
+        partitionKey: agent_id
+        sortKey: session_sk
+        ttlAttribute: expires_at
 
   storage:
     efs:
@@ -24,42 +38,13 @@ spec:
         uid: 1000
         gid: 1000
 
-  cache:
-    engine: redis
-    nodeType: cache.t3.micro
-    numNodes: 1
-
-  database:
-    engine: postgres
-    instanceClass: db.t3.micro
-    allocatedStorage: 20
-    dbName: agent_factory_db
-    dbUsername: agent_factory_admin
-
   serviceDiscovery:
     namespace: agents.local
-
-  webhookGateway: {}
 
   eventbridge:
     scheduleGroup: agent-factory
 
-  lambda:
-    functions:
-      - name: pi-chat
-        image: pi-agent-lambda
-        memory: 2048
-        timeout: 120
-      - name: claude-chat
-        image: claude-agent-lambda
-        memory: 2048
-        timeout: 120
-      - name: webhook-gateway
-        image: af-webhook-gateway
-        memory: 512
-        timeout: 30
-
   secrets:
     - ANTHROPIC_API_KEY
-    - DIFY_DB_PASSWORD
-    - REDIS_PASSWORD
+    - GITHUB_PAT
+    - MEMORY_REPO_URL

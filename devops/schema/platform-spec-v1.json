@@ -62,7 +62,8 @@
             "cpu",
             "memory",
             "instances",
-            "healthCheck"
+            "healthCheck",
+            "publicPaths"
           ],
           "properties": {
             "type": {
@@ -129,6 +130,16 @@
                   "default": "/health",
                   "description": "HTTP path the ALB uses to verify the service is healthy (e.g. /health, /ping, /). Must return 200 OK with no auth required. If your app doesn't have a health endpoint, add one \u2014 it's required for ALB routing."
                 }
+              }
+            },
+            "publicPaths": {
+              "type": "array",
+              "title": "Public paths",
+              "description": "URL path patterns that Cloudflare Zero Trust will allow without authentication. All other paths on this service require Google OAuth via Zero Trust. Use this for webhook receivers, OAuth callbacks, or any endpoint that external systems call directly. You must implement the corresponding routes in your app — this only configures Cloudflare to let the requests through. Examples: /webhooks/*, /api/public/*, /oauth/callback.",
+              "items": {
+                "type": "string",
+                "title": "Path pattern",
+                "description": "URL path pattern to allow publicly without Zero Trust auth (e.g. /webhooks/*, /api/public/*)."
               }
             }
           }
@@ -318,6 +329,72 @@
             }
           }
         },
+        "dynamodb": {
+          "type": "object",
+          "title": "DynamoDB",
+          "description": "Grants your ECS task full access to the declared DynamoDB tables. Tables are created by your application on startup — the platform provisions IAM so the task role can read, write, and manage exactly these tables (and nothing else). Use this instead of RDS when you don't need SQL joins or strict relational constraints.",
+          "additionalProperties": false,
+          "required": ["tables"],
+          "x-order": ["tables"],
+          "properties": {
+            "tables": {
+              "type": "array",
+              "title": "Tables",
+              "description": "Declare each table your service will use. The platform scopes IAM access to exactly these table names. Your application is responsible for calling CreateTable on startup (if the table does not already exist). You can add tables later by re-running pulumi up — no existing tables are affected.",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "title": "Table",
+                "additionalProperties": false,
+                "required": ["name", "partitionKey"],
+                "x-order": ["name", "partitionKey", "partitionKeyType", "sortKey", "sortKeyType", "ttlAttribute", "billingMode"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "title": "Table name",
+                    "description": "DynamoDB table name. Must be unique in the AWS account and region. Convention: prefix with your service name (e.g. agent-factory-jobs, agent-factory-agents). Hyphens are fine."
+                  },
+                  "partitionKey": {
+                    "type": "string",
+                    "title": "Partition key",
+                    "description": "Name of the attribute used as the partition key (hash key). This is the primary way DynamoDB distributes and retrieves items. Choose a high-cardinality attribute that you always know when reading (e.g. job_id, user_id, agent_id). Avoid low-cardinality values like status or type as the partition key — they cause hot partitions."
+                  },
+                  "partitionKeyType": {
+                    "type": "string",
+                    "title": "Partition key type",
+                    "enum": ["S", "N", "B"],
+                    "default": "S",
+                    "description": "Data type of the partition key. S = String (most common), N = Number, B = Binary."
+                  },
+                  "sortKey": {
+                    "type": "string",
+                    "title": "Sort key (optional)",
+                    "description": "Name of the optional sort key (range key). Together with the partition key, forms the composite primary key. Use when you query items under the same partition in a range — e.g. all events for a user sorted by timestamp, or all messages in a session sorted by sequence number. Leave blank if you always look up items by a single unique ID."
+                  },
+                  "sortKeyType": {
+                    "type": "string",
+                    "title": "Sort key type",
+                    "enum": ["S", "N", "B"],
+                    "default": "S",
+                    "description": "Data type of the sort key. S = String, N = Number (use for numeric timestamps), B = Binary. Only used if sort key is set."
+                  },
+                  "ttlAttribute": {
+                    "type": "string",
+                    "title": "TTL attribute (optional)",
+                    "description": "Name of the item attribute that holds the TTL expiry timestamp (Unix epoch in seconds). DynamoDB automatically deletes items after this time — no manual cleanup needed. Useful for session data, job history, or any data with a natural expiry. Example: expires_at. Your application must write this attribute when creating items."
+                  },
+                  "billingMode": {
+                    "type": "string",
+                    "title": "Billing mode",
+                    "enum": ["PAY_PER_REQUEST", "PROVISIONED"],
+                    "default": "PAY_PER_REQUEST",
+                    "description": "PAY_PER_REQUEST (on-demand): you pay per read/write, no capacity planning needed. Good for variable or unpredictable traffic. PROVISIONED: you specify read/write capacity units upfront — cheaper at high, steady throughput but requires capacity planning. Start with PAY_PER_REQUEST and switch to PROVISIONED only if costs become significant."
+                  }
+                }
+              }
+            }
+          }
+        },
         "serviceDiscovery": {
           "type": "object",
           "title": "Service Discovery (Cloud Map)",
@@ -393,13 +470,6 @@
               }
             }
           }
-        },
-        "webhookGateway": {
-          "type": "object",
-          "title": "Webhook Gateway",
-          "description": "Provisions an inbound HTTP endpoint that receives events from external systems (Slack, GitHub, Stripe, etc.) and forwards them to your service. The URL is stable and provisioned once \u2014 you give it to senders as their webhook URL. No scheduled tasks; purely for receiving HTTP POST events.",
-          "additionalProperties": false,
-          "properties": {}
         },
         "eventbridge": {
           "type": "object",
