@@ -203,19 +203,28 @@ jobs:
           CLUSTER=$(echo "$OUTPUTS_JSON" | jq -r '.ecs_cluster_name // empty')
           SERVICE=$(echo "$OUTPUTS_JSON" | jq -r '.ecs_service_name // empty')
           
+          HAS_ECS="false"
+          if [ -n "$ECR_URI" ] && [ -n "$CLUSTER" ] && [ -n "$SERVICE" ]; then
+            HAS_ECS="true"
+          fi
+          
           echo "ECR_URI=$ECR_URI"
           echo "CLUSTER=$CLUSTER"
           echo "SERVICE=$SERVICE"
+          echo "HAS_ECS=$HAS_ECS"
           
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
           echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
           echo "service=$SERVICE" >> $GITHUB_OUTPUT
+          echo "has_ecs=$HAS_ECS" >> $GITHUB_OUTPUT
 
       - name: Login to Amazon ECR
+        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
         run: |
           aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
 
       - name: Build and push Docker image
+        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
         run: |
           ECR_URI="${{ steps.pulumi_outputs.outputs.ecr_uri }}"
           echo "Building and pushing Docker image to $ECR_URI"
@@ -223,6 +232,7 @@ jobs:
           docker push "$ECR_URI:latest"
 
       - name: Force ECS service deployment
+        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
         run: |
           aws ecs update-service \
             --cluster "${{ steps.pulumi_outputs.outputs.cluster }}" \
@@ -231,5 +241,18 @@ jobs:
             --region ${{ inputs.aws_region }}
 
       - name: Output service URL
+        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
         run: |
           echo "Service URL: https://${{ steps.service_name.outputs.service_name }}.althq-dev.com"
+      
+      - name: Output provisioned resources
+        if: steps.pulumi_outputs.outputs.has_ecs != 'true'
+        working-directory: engine
+        env:
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          uv run pulumi stack select "$STACK_NAME" -C devops
+          echo "Provisioned resources (no ECS compute):"
+          uv run pulumi stack output --json -C devops
