@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import re
 from typing import Any
 
 import pulumi
@@ -20,17 +20,26 @@ class _AgentCoreMemoryProvider(pulumi.dynamic.ResourceProvider):
         import boto3
         return boto3.client("bedrock-agentcore-control", region_name=self._region)
 
+    @staticmethod
+    def _sanitize_name(name: str) -> str:
+        """AgentCore names must match [a-zA-Z][a-zA-Z0-9_]{0,47}."""
+        sanitized = re.sub(r"[^a-zA-Z0-9_]", "_", name)
+        if not sanitized or not sanitized[0].isalpha():
+            sanitized = "m" + sanitized
+        return sanitized[:48]
+
     def create(self, props: dict[str, Any]) -> pulumi.dynamic.CreateResult:
         client = self._client()
+        memory_name = self._sanitize_name(props["name"])
         resp = client.create_memory(
-            name=props["name"],
+            name=memory_name,
             description=props.get("description", ""),
             memoryExecutionRoleArn=props["memory_execution_role_arn"],
             eventExpiryDuration=int(props.get("event_expiry_duration", 365)),
             memoryStrategies=[
                 {
                     "semanticMemoryStrategy": {
-                        "name": f"{props['name']}_semantic",
+                        "name": f"{memory_name}_semantic",
                         "description": "Semantic memory",
                         "namespaces": ["default"],
                     }
