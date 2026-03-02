@@ -18,7 +18,7 @@ class _AgentCoreMemoryProvider(pulumi.dynamic.ResourceProvider):
 
     def _client(self):
         import boto3
-        return boto3.client("bedrock-agentcore", region_name=self._region)
+        return boto3.client("bedrock-agentcore-control", region_name=self._region)
 
     def create(self, props: dict[str, Any]) -> pulumi.dynamic.CreateResult:
         client = self._client()
@@ -38,13 +38,13 @@ class _AgentCoreMemoryProvider(pulumi.dynamic.ResourceProvider):
                 }
             ],
         )
-        memory_id = resp["memory"]["memoryId"]
+        memory_id = resp["memory"]["id"]
         return pulumi.dynamic.CreateResult(
             id_=memory_id,
             outs={
                 **props,
                 "memory_id": memory_id,
-                "memory_arn": resp["memory"]["memoryArn"],
+                "memory_arn": resp["memory"]["arn"],
             },
         )
 
@@ -57,7 +57,7 @@ class _AgentCoreMemoryProvider(pulumi.dynamic.ResourceProvider):
                 outs={
                     **props,
                     "memory_id": id_,
-                    "memory_arn": resp["memory"]["memoryArn"],
+                    "memory_arn": resp["memory"]["arn"],
                 },
             )
         except Exception:

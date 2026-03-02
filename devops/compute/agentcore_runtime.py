@@ -17,17 +17,10 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
 
     def _client(self):
         import boto3
-        return boto3.client("bedrock-agentcore", region_name=self._region)
+        return boto3.client("bedrock-agentcore-control", region_name=self._region)
 
     def create(self, props: dict[str, Any]) -> pulumi.dynamic.CreateResult:
         client = self._client()
-
-        container_config: dict[str, Any] = {
-            "containerUri": props["image_uri"],
-        }
-        env_vars = props.get("environment_variables") or {}
-        if env_vars:
-            container_config["environmentVariables"] = env_vars
 
         network_config: dict[str, Any] = {
             "networkMode": props.get("network_mode", "PUBLIC"),
@@ -43,22 +36,28 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
 
         create_args: dict[str, Any] = {
             "agentRuntimeName": props["runtime_name"],
-            "agentRuntimeArtifact": {"containerConfiguration": container_config},
+            "agentRuntimeArtifact": {"containerConfiguration": {"containerUri": props["image_uri"]}},
             "roleArn": props["role_arn"],
             "networkConfiguration": network_config,
         }
+
+        env_vars = props.get("environment_variables") or {}
+        if env_vars:
+            create_args["environmentVariables"] = env_vars
+
         if props.get("description"):
             create_args["description"] = props["description"]
 
         if props.get("authorizer"):
             auth = props["authorizer"]
-            create_args["authorizerConfiguration"] = {
-                "customJWTAuthorizer": {
-                    "discoveryUrl": auth["discovery_url"],
-                    "allowedAudiences": auth.get("allowed_audiences", []),
-                    "allowedClients": auth.get("allowed_clients", []),
+            if auth.get("discovery_url"):
+                create_args["authorizerConfiguration"] = {
+                    "customJWTAuthorizer": {
+                        "discoveryUrl": auth["discovery_url"],
+                        "allowedAudiences": auth.get("allowed_audiences", []),
+                        "allowedClients": auth.get("allowed_clients", []),
+                    }
                 }
-            }
 
         resp = client.create_agent_runtime(**create_args)
         runtime_id = resp["agentRuntimeId"]
@@ -93,17 +92,15 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
     ) -> pulumi.dynamic.UpdateResult:
         client = self._client()
 
-        container_config: dict[str, Any] = {
-            "containerUri": new_props["image_uri"],
-        }
-        env_vars = new_props.get("environment_variables") or {}
-        if env_vars:
-            container_config["environmentVariables"] = env_vars
-
         update_args: dict[str, Any] = {
             "agentRuntimeId": id_,
-            "agentRuntimeArtifact": {"containerConfiguration": container_config},
+            "agentRuntimeArtifact": {"containerConfiguration": {"containerUri": new_props["image_uri"]}},
         }
+
+        env_vars = new_props.get("environment_variables") or {}
+        if env_vars:
+            update_args["environmentVariables"] = env_vars
+
         if new_props.get("description"):
             update_args["description"] = new_props["description"]
 
