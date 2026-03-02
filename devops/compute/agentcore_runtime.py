@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 import pulumi
 import pulumi.dynamic
+
+PENDING_IMAGE_PREFIX = "pending-no-image-"
 
 
 class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
@@ -59,7 +62,23 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
                     }
                 }
 
-        resp = client.create_agent_runtime(**create_args)
+        try:
+            resp = client.create_agent_runtime(**create_args)
+        except client.exceptions.ValidationException as e:
+            if "image identifier does not exist" in str(e):
+                print(
+                    f"WARNING: ECR image not found for runtime '{props['runtime_name']}'. "
+                    "Runtime creation deferred until image is pushed. "
+                    "Push a container image to ECR and re-run deploy.",
+                    file=sys.stderr,
+                )
+                sentinel = f"{PENDING_IMAGE_PREFIX}{props['runtime_name']}"
+                return pulumi.dynamic.CreateResult(
+                    id_=sentinel,
+                    outs={**props, "agent_runtime_id": sentinel, "agent_runtime_arn": ""},
+                )
+            raise
+
         runtime_id = resp["agentRuntimeId"]
         runtime_arn = resp["agentRuntimeArn"]
 
@@ -73,6 +92,8 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         )
 
     def read(self, id_: str, props: dict[str, Any]) -> pulumi.dynamic.ReadResult:
+        if id_.startswith(PENDING_IMAGE_PREFIX):
+            return pulumi.dynamic.ReadResult(id_="", outs={})
         try:
             client = self._client()
             resp = client.get_agent_runtime(agentRuntimeId=id_)
@@ -113,6 +134,8 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         })
 
     def delete(self, id_: str, props: dict[str, Any]) -> None:
+        if id_.startswith(PENDING_IMAGE_PREFIX):
+            return
         try:
             client = self._client()
             client.delete_agent_runtime(agentRuntimeId=id_)
