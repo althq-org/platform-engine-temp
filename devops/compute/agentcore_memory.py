@@ -26,13 +26,12 @@ class _AgentCoreMemoryProvider(pulumi.dynamic.ResourceProvider):
             name=props["name"],
             description=props.get("description", ""),
             memoryExecutionRoleArn=props["memory_execution_role_arn"],
-            eventExpiryDuration=props.get("event_expiry_duration", 365),
+            eventExpiryDuration=int(props.get("event_expiry_duration", 365)),
             memoryStrategies=[
                 {
                     "semanticMemoryStrategy": {
                         "name": f"{props['name']}_semantic",
-                        "description": "Semantic memory: summarization, fact extraction, preferences",
-                        "model": "anthropic.claude-3-haiku-20240307-v1:0",
+                        "description": "Semantic memory",
                         "namespaces": ["default"],
                     }
                 }
