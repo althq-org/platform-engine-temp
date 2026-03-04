@@ -113,9 +113,27 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
     ) -> pulumi.dynamic.UpdateResult:
         client = self._client()
 
+        if id_.startswith(PENDING_IMAGE_PREFIX):
+            result = self.create(new_props)
+            return pulumi.dynamic.UpdateResult(outs=result.outs)
+
+        network_config: dict[str, Any] = {
+            "networkMode": new_props.get("network_mode", "PUBLIC"),
+        }
+        if new_props.get("network_mode") == "VPC":
+            vpc_config: dict[str, Any] = {}
+            if new_props.get("subnet_ids"):
+                vpc_config["subnetIds"] = new_props["subnet_ids"]
+            if new_props.get("security_group_ids"):
+                vpc_config["securityGroupIds"] = new_props["security_group_ids"]
+            if vpc_config:
+                network_config["vpcConfig"] = vpc_config
+
         update_args: dict[str, Any] = {
             "agentRuntimeId": id_,
             "agentRuntimeArtifact": {"containerConfiguration": {"containerUri": new_props["image_uri"]}},
+            "roleArn": new_props["role_arn"],
+            "networkConfiguration": network_config,
         }
 
         env_vars = new_props.get("environment_variables") or {}
