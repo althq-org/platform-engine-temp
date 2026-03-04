@@ -619,6 +619,13 @@
                     "minLength": 1,
                     "description": "ECR repository name for this runtime's container image (without tag or registry prefix)."
                   },
+                  "architecture": {
+                    "type": "string",
+                    "title": "Container architecture",
+                    "enum": ["arm64", "amd64"],
+                    "default": "arm64",
+                    "description": "CPU architecture for the container image. AgentCore currently only supports arm64 — this default is correct for all AgentCore runtimes. Only change if AWS adds amd64 support."
+                  },
                   "description": {
                     "type": "string",
                     "title": "Description",

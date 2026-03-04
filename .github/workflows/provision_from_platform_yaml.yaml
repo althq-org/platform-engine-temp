@@ -73,12 +73,17 @@ jobs:
           python3 -m pip install PyYAML
           python3 -c "import yaml; print('PyYAML OK')"
 
-      - name: Get service name from platform.yaml
+      - name: Read platform.yaml metadata
         id: service_name
         run: |
-          SERVICE_NAME=$(python3 -c "import yaml; print(yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))['metadata']['name'])")
-          echo "SERVICE_NAME=$SERVICE_NAME" >> $GITHUB_OUTPUT
-          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+          python3 -c "
+          import yaml, json
+          config = yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))
+          print('service_name=' + config['metadata']['name'])
+          runtimes = config.get('spec', {}).get('agentcoreRuntime', {}).get('runtimes', [])
+          print('has_agentcore=' + ('true' if runtimes else 'false'))
+          print('agentcore_runtimes=' + json.dumps([{'name': rt['name'], 'image': rt['image'], 'arch': rt.get('architecture', 'arm64')} for rt in runtimes]))
+          " >> $GITHUB_OUTPUT
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -247,41 +252,29 @@ jobs:
             HAS_ECS="true"
           fi
           
-          # Detect AgentCore ECR repos (ecr_<image>_uri outputs, excluding ecr_repository_uri)
-          AGENTCORE_IMAGES=$(echo "$OUTPUTS_JSON" | jq -r 'to_entries[] | select(.key | test("^ecr_.*_uri$")) | select(.key != "ecr_repository_uri") | .key' 2>/dev/null || true)
-          HAS_AGENTCORE="false"
-          if [ -n "$AGENTCORE_IMAGES" ]; then
-            HAS_AGENTCORE="true"
-          fi
-          
           echo "ECR_URI=$ECR_URI"
           echo "CLUSTER=$CLUSTER"
           echo "SERVICE=$SERVICE"
           echo "HAS_ECS=$HAS_ECS"
-          echo "HAS_AGENTCORE=$HAS_AGENTCORE"
-          echo "AGENTCORE_IMAGES=$AGENTCORE_IMAGES"
           
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
           echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
           echo "service=$SERVICE" >> $GITHUB_OUTPUT
           echo "has_ecs=$HAS_ECS" >> $GITHUB_OUTPUT
-          echo "has_agentcore=$HAS_AGENTCORE" >> $GITHUB_OUTPUT
           echo "outputs_json<<OUTPUTS_EOF" >> $GITHUB_OUTPUT
           echo "$OUTPUTS_JSON" >> $GITHUB_OUTPUT
           echo "OUTPUTS_EOF" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU for multi-arch builds
-        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
         uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
 
       - name: Set up Docker Buildx
-        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
         uses: docker/setup-buildx-action@v3
 
       - name: Login to Amazon ECR
-        if: ${{ !inputs.preview_only && (steps.pulumi_outputs.outputs.has_ecs == 'true' || steps.pulumi_outputs.outputs.has_agentcore == 'true') }}
+        if: ${{ !inputs.preview_only && (steps.pulumi_outputs.outputs.has_ecs == 'true' || steps.service_name.outputs.has_agentcore == 'true') }}
         run: |
           aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
 
@@ -295,21 +288,14 @@ jobs:
           docker push "$ECR_URI:latest"
 
       - name: Build and push AgentCore images
-        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
         run: |
-          # Read AgentCore runtime images from platform.yaml
-          python3 -c "
-          import yaml, json
-          config = yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))
-          runtimes = config.get('spec', {}).get('agentcoreRuntime', {}).get('runtimes', [])
-          print(json.dumps([{'name': rt['name'], 'image': rt['image']} for rt in runtimes]))
-          " > /tmp/agentcore_runtimes.json
-          
           OUTPUTS='${{ steps.pulumi_outputs.outputs.outputs_json }}'
           
-          for row in $(cat /tmp/agentcore_runtimes.json | jq -c '.[]'); do
+          for row in $(echo '${{ steps.service_name.outputs.agentcore_runtimes }}' | jq -c '.[]'); do
             IMAGE_NAME=$(echo "$row" | jq -r '.image')
             RUNTIME_NAME=$(echo "$row" | jq -r '.name')
+            ARCH=$(echo "$row" | jq -r '.arch')
             OUTPUT_KEY="ecr_$(echo "$IMAGE_NAME" | tr '-' '_')_uri"
             ECR_URI=$(echo "$OUTPUTS" | jq -r ".${OUTPUT_KEY} // empty")
             
@@ -324,13 +310,13 @@ jobs:
               continue
             fi
             
-            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI (arm64)"
-            docker buildx build --platform linux/arm64 --push -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
+            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI (${ARCH})"
+            docker buildx build --platform "linux/${ARCH}" --push -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
             echo "✓ Pushed $IMAGE_NAME:${{ github.sha }}"
           done
 
       - name: Activate AgentCore runtimes
-        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
         working-directory: engine
         env:
           PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
