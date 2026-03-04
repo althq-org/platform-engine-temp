@@ -314,8 +314,8 @@ jobs:
               continue
             fi
             
-            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI"
-            docker build -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
+            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI (arm64)"
+            docker build --platform linux/arm64 -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
             docker push "$ECR_URI:${{ github.sha }}"
             echo "✓ Pushed $IMAGE_NAME:${{ github.sha }}"
           done
