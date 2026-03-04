@@ -246,18 +246,31 @@ jobs:
             HAS_ECS="true"
           fi
           
+          # Detect AgentCore ECR repos (ecr_<image>_uri outputs, excluding ecr_repository_uri)
+          AGENTCORE_IMAGES=$(echo "$OUTPUTS_JSON" | jq -r 'to_entries[] | select(.key | test("^ecr_.*_uri$")) | select(.key != "ecr_repository_uri") | .key' 2>/dev/null || true)
+          HAS_AGENTCORE="false"
+          if [ -n "$AGENTCORE_IMAGES" ]; then
+            HAS_AGENTCORE="true"
+          fi
+          
           echo "ECR_URI=$ECR_URI"
           echo "CLUSTER=$CLUSTER"
           echo "SERVICE=$SERVICE"
           echo "HAS_ECS=$HAS_ECS"
+          echo "HAS_AGENTCORE=$HAS_AGENTCORE"
+          echo "AGENTCORE_IMAGES=$AGENTCORE_IMAGES"
           
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
           echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
           echo "service=$SERVICE" >> $GITHUB_OUTPUT
           echo "has_ecs=$HAS_ECS" >> $GITHUB_OUTPUT
+          echo "has_agentcore=$HAS_AGENTCORE" >> $GITHUB_OUTPUT
+          echo "outputs_json<<OUTPUTS_EOF" >> $GITHUB_OUTPUT
+          echo "$OUTPUTS_JSON" >> $GITHUB_OUTPUT
+          echo "OUTPUTS_EOF" >> $GITHUB_OUTPUT
 
       - name: Login to Amazon ECR
-        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
+        if: ${{ !inputs.preview_only && (steps.pulumi_outputs.outputs.has_ecs == 'true' || steps.pulumi_outputs.outputs.has_agentcore == 'true') }}
         run: |
           aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
 
@@ -268,6 +281,56 @@ jobs:
           echo "Building and pushing Docker image to $ECR_URI"
           docker build -t "$ECR_URI:latest" ./service
           docker push "$ECR_URI:latest"
+
+      - name: Build and push AgentCore images
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        run: |
+          # Read AgentCore runtime images from platform.yaml
+          python3 -c "
+          import yaml, json
+          config = yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))
+          runtimes = config.get('spec', {}).get('agentcoreRuntime', {}).get('runtimes', [])
+          print(json.dumps([{'name': rt['name'], 'image': rt['image']} for rt in runtimes]))
+          " > /tmp/agentcore_runtimes.json
+          
+          OUTPUTS='${{ steps.pulumi_outputs.outputs.outputs_json }}'
+          
+          for row in $(cat /tmp/agentcore_runtimes.json | jq -c '.[]'); do
+            IMAGE_NAME=$(echo "$row" | jq -r '.image')
+            RUNTIME_NAME=$(echo "$row" | jq -r '.name')
+            OUTPUT_KEY="ecr_$(echo "$IMAGE_NAME" | tr '-' '_')_uri"
+            ECR_URI=$(echo "$OUTPUTS" | jq -r ".${OUTPUT_KEY} // empty")
+            
+            if [ -z "$ECR_URI" ]; then
+              echo "⚠ No ECR output found for $IMAGE_NAME (expected .$OUTPUT_KEY)"
+              continue
+            fi
+            
+            BUILD_DIR="./service/${IMAGE_NAME}"
+            if [ ! -f "$BUILD_DIR/Dockerfile" ]; then
+              echo "⚠ No Dockerfile at $BUILD_DIR — skipping $IMAGE_NAME"
+              continue
+            fi
+            
+            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI"
+            docker build -t "$ECR_URI:latest" "$BUILD_DIR"
+            docker push "$ECR_URI:latest"
+            echo "✓ Pushed $IMAGE_NAME"
+          done
+
+      - name: Activate AgentCore runtimes
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          echo "Re-running Pulumi up to activate AgentCore runtimes with pushed images..."
+          uv run pulumi stack select "$STACK_NAME" -C devops
+          uv run pulumi up --yes --non-interactive -C devops
 
       - name: Force ECS service deployment
         if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
@@ -284,7 +347,7 @@ jobs:
           echo "Service URL: https://${{ steps.service_name.outputs.service_name }}.althq-dev.com"
       
       - name: Output provisioned resources
-        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs != 'true' }}
+        if: ${{ !inputs.preview_only }}
         working-directory: engine
         env:
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
@@ -292,5 +355,5 @@ jobs:
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           uv run pulumi stack select "$STACK_NAME" -C devops
-          echo "Provisioned resources (no ECS compute):"
+          echo "Provisioned resources:"
           uv run pulumi stack output --json -C devops
