@@ -1,9 +1,11 @@
 """AgentCore Runtime capability: managed microVM agent compute with bundled Memory."""
 
+import base64
 import json
 import os
 from typing import Any
 
+import boto3
 import pulumi
 import pulumi_aws
 
@@ -41,11 +43,7 @@ def agentcore_runtime_handler(
     if bucket_arns:
         _grant_s3_access(ctx, agentcore_role, bucket_arns, service_name)
 
-    secrets_env: dict[str, str] = {}
-    for secret_name in ctx.config.secrets:
-        value = os.environ.get(secret_name)
-        if value:
-            secrets_env[secret_name] = value
+    secrets_env = _resolve_secrets(ctx.config.secrets, ctx.config.region)
 
     runtimes_config: list[dict[str, Any]] = section_config.get("runtimes") or []
     authorizer_config = section_config.get("authorizer")
@@ -98,6 +96,42 @@ def agentcore_runtime_handler(
     task_role = ctx.get("iam.task_role")
     if task_role is not None:
         _grant_invoke_permission(ctx, task_role, agentcore_role, service_name)
+
+
+def _resolve_secrets(
+    secrets_config: list[str] | dict[str, dict[str, str]],
+    region: str,
+) -> dict[str, str]:
+    """Resolve secrets to plaintext key-value pairs.
+
+    Legacy format (list of names): reads values from environment variables.
+    KMS-encrypted format (dict): decrypts values for the current Pulumi stack environment.
+    """
+    if isinstance(secrets_config, list):
+        return {
+            name: value
+            for name in secrets_config
+            if (value := os.environ.get(name))
+        }
+
+    if not secrets_config:
+        return {}
+
+    environment = pulumi.get_stack().split(".")[0]
+    kms = boto3.client("kms", region_name=region)
+    result: dict[str, str] = {}
+
+    for secret_name, env_values in secrets_config.items():
+        encrypted = env_values.get(environment)
+        if not encrypted:
+            pulumi.log.warn(
+                f"Secret '{secret_name}' has no value for environment '{environment}'"
+            )
+            continue
+        response = kms.decrypt(CiphertextBlob=base64.b64decode(encrypted))
+        result[secret_name] = response["Plaintext"].decode("utf-8")
+
+    return result
 
 
 def _grant_s3_access(

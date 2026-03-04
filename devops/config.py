@@ -143,7 +143,7 @@ class PlatformConfig:
     eventbridge: EventBridgeConfig | None = None
     s3: S3Config | None = None
     agentcore_runtime: AgentCoreRuntimeConfig | None = None
-    secrets: list[str] = field(default_factory=list)
+    secrets: list[str] | dict[str, dict[str, str]] = field(default_factory=list)
 
     # Backward-compat: delegate to compute when present
     @property

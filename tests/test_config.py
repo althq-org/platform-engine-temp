@@ -280,6 +280,36 @@ spec:
     assert config.lambda_config.functions[0].timeout == 60
 
 
+def test_platform_config_parses_kms_encrypted_secrets(tmp_path: Path) -> None:
+    """Test parsing KMS-encrypted secrets (dict format)."""
+    yaml_content = """
+apiVersion: platform.althq.com/v1
+kind: Service
+metadata:
+  name: test-service
+spec:
+  secrets:
+    ANTHROPIC_API_KEY:
+      dev: AQICAHhEncryptedDev==
+      prod: AQICAHhEncryptedProd==
+    DB_PASSWORD:
+      dev: AQICAHhDbDev==
+"""
+    yaml_file = tmp_path / "platform.yaml"
+    yaml_file.write_text(yaml_content)
+
+    mock_config = MagicMock()
+    mock_config.require.return_value = "us-west-2"
+    with patch("devops.config.pulumi.Config", return_value=mock_config):
+        config = PlatformConfig.from_file(str(yaml_file))
+
+    assert isinstance(config.secrets, dict)
+    assert "ANTHROPIC_API_KEY" in config.secrets
+    assert config.secrets["ANTHROPIC_API_KEY"]["dev"] == "AQICAHhEncryptedDev=="
+    assert config.secrets["ANTHROPIC_API_KEY"]["prod"] == "AQICAHhEncryptedProd=="
+    assert config.secrets["DB_PASSWORD"]["dev"] == "AQICAHhDbDev=="
+
+
 def test_platform_config_backward_compat_properties_without_compute() -> None:
     """Backward-compat: config without compute returns defaults for port, health_path, cpu, memory, min_capacity."""
     config = PlatformConfig(

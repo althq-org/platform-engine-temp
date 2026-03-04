@@ -145,14 +145,35 @@
           }
         },
         "secrets": {
-          "type": "array",
           "title": "Secrets",
-          "description": "List of secret names to inject as environment variables. Values must be set as GitHub repo secrets; only names are stored in platform.yaml.",
-          "items": {
-            "type": "string",
-            "title": "Secret name",
-            "description": "Name of a GitHub repo secret (e.g. DATABASE_URL, API_KEY)."
-          }
+          "description": "Service secrets injected as environment variables. Supports two formats: (1) Legacy array of names — values come from GitHub repo secrets. (2) Object with KMS-encrypted values per environment (demo/dev/stage/prod) — values are decrypted at deploy time.",
+          "oneOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "title": "Secret name",
+                "description": "Name of a GitHub repo secret (e.g. DATABASE_URL, API_KEY)."
+              }
+            },
+            {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "object",
+                "title": "Per-environment encrypted values",
+                "description": "KMS-encrypted secret values keyed by environment. At least one environment must have a value.",
+                "minProperties": 1,
+                "additionalProperties": false,
+                "properties": {
+                  "demo": { "type": "string", "minLength": 1, "description": "KMS-encrypted value for demo environment." },
+                  "dev": { "type": "string", "minLength": 1, "description": "KMS-encrypted value for dev environment." },
+                  "stage": { "type": "string", "minLength": 1, "description": "KMS-encrypted value for stage environment." },
+                  "prod": { "type": "string", "minLength": 1, "description": "KMS-encrypted value for prod environment." }
+                }
+              }
+            }
+          ]
         },
         "storage": {
           "type": "object",

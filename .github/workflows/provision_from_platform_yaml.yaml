@@ -148,7 +148,32 @@ jobs:
         env:
           ALL_SECRETS: ${{ toJSON(secrets) }}
         run: |
-          # Read which secrets this service needs from platform.yaml
+          # Detect secrets format: legacy (list) needs GitHub secrets, KMS (dict) is self-contained
+          SECRETS_FORMAT=$(python3 -c "
+          import yaml
+          config = yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))
+          secrets = config.get('spec', {}).get('secrets')
+          if secrets is None:
+              print('none')
+          elif isinstance(secrets, list):
+              print('legacy')
+          elif isinstance(secrets, dict):
+              print('kms')
+          else:
+              print('none')
+          ")
+          
+          if [ "$SECRETS_FORMAT" = "none" ]; then
+            echo "No secrets declared in platform.yaml"
+            exit 0
+          fi
+          
+          if [ "$SECRETS_FORMAT" = "kms" ]; then
+            echo "✓ Secrets are KMS-encrypted in platform.yaml — decrypted at deploy time"
+            exit 0
+          fi
+          
+          # Legacy format: export each required secret from GitHub secrets
           REQUIRED_SECRETS=$(python3 -c "
           import yaml
           config = yaml.safe_load(open('service/${{ inputs.platform_yaml_path }}'))
@@ -156,16 +181,9 @@ jobs:
           print(' '.join(secrets))
           ")
           
-          if [ -z "$REQUIRED_SECRETS" ]; then
-            echo "No secrets declared in platform.yaml"
-            exit 0
-          fi
-          
-          # Export each required secret to GITHUB_ENV
           for SECRET_NAME in $REQUIRED_SECRETS; do
             SECRET_VALUE=$(echo "$ALL_SECRETS" | jq -r ".[\"$SECRET_NAME\"] // empty")
             if [ -n "$SECRET_VALUE" ]; then
-              # Mask the secret value in logs
               echo "::add-mask::$SECRET_VALUE"
               echo "$SECRET_NAME=$SECRET_VALUE" >> $GITHUB_ENV
               echo "✓ Found secret: $SECRET_NAME"

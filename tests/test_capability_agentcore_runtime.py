@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import devops.capabilities.agentcore_runtime  # noqa: F401 - register capability
+from devops.capabilities.agentcore_runtime import _resolve_secrets
 from devops.capabilities.context import CapabilityContext
 from devops.capabilities.registry import CAPABILITIES
 
@@ -10,11 +11,12 @@ from devops.capabilities.registry import CAPABILITIES
 def _make_ctx(
     with_task_role: bool = False,
     with_s3: bool = False,
+    secrets: list[str] | dict[str, dict[str, str]] | None = None,
 ) -> CapabilityContext:
     config = MagicMock()
     config.service_name = "my-svc"
     config.region = "us-west-2"
-    config.secrets = []
+    config.secrets = secrets if secrets is not None else []
     infra = MagicMock()
     infra.private_subnet_ids = ["subnet-1", "subnet-2"]
     ctx = CapabilityContext(
@@ -151,3 +153,69 @@ def test_agentcore_handler_multiple_runtimes(
     assert mock_ecr.call_count == 2
     assert mock_runtime.call_count == 2
     assert mock_memory.call_count == 1  # Memory is shared
+
+
+# --- _resolve_secrets tests ---
+
+
+def test_resolve_secrets_legacy_list_reads_env() -> None:
+    """Legacy format: reads values from environment variables."""
+    with patch.dict("os.environ", {"API_KEY": "secret123", "DB_URL": "postgres://..."}):
+        result = _resolve_secrets(["API_KEY", "DB_URL", "MISSING"], "us-west-2")
+    assert result == {"API_KEY": "secret123", "DB_URL": "postgres://..."}
+
+
+def test_resolve_secrets_legacy_empty_list() -> None:
+    """Legacy format: empty list returns empty dict."""
+    result = _resolve_secrets([], "us-west-2")
+    assert result == {}
+
+
+@patch("devops.capabilities.agentcore_runtime.pulumi.get_stack", return_value="dev.my-svc.us-west-2")
+def test_resolve_secrets_kms_decrypts_for_environment(mock_stack: MagicMock) -> None:
+    """KMS format: decrypts the value for the current stack environment."""
+    import base64
+
+    plaintext = b"sk-ant-secret-key"
+    mock_kms = MagicMock()
+    mock_kms.decrypt.return_value = {"Plaintext": plaintext}
+
+    encrypted_secrets = {
+        "ANTHROPIC_API_KEY": {
+            "dev": base64.b64encode(b"fake-ciphertext").decode(),
+            "prod": base64.b64encode(b"fake-prod-ciphertext").decode(),
+        }
+    }
+
+    with patch("devops.capabilities.agentcore_runtime.boto3") as mock_boto3:
+        mock_boto3.client.return_value = mock_kms
+        result = _resolve_secrets(encrypted_secrets, "us-west-2")
+
+    assert result == {"ANTHROPIC_API_KEY": "sk-ant-secret-key"}
+    mock_kms.decrypt.assert_called_once()
+
+
+@patch("devops.capabilities.agentcore_runtime.pulumi.get_stack", return_value="stage.my-svc.us-west-2")
+@patch("devops.capabilities.agentcore_runtime.pulumi.log")
+def test_resolve_secrets_kms_warns_on_missing_env(
+    mock_log: MagicMock,
+    mock_stack: MagicMock,
+) -> None:
+    """KMS format: warns when secret has no value for current environment."""
+    encrypted_secrets = {
+        "ANTHROPIC_API_KEY": {
+            "dev": "encrypted-dev-value",
+        }
+    }
+
+    with patch("devops.capabilities.agentcore_runtime.boto3"):
+        result = _resolve_secrets(encrypted_secrets, "us-west-2")
+
+    assert result == {}
+    mock_log.warn.assert_called_once()
+
+
+def test_resolve_secrets_empty_dict() -> None:
+    """KMS format: empty dict returns empty dict without calling KMS."""
+    result = _resolve_secrets({}, "us-west-2")
+    assert result == {}
