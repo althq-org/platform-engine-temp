@@ -217,6 +217,7 @@ jobs:
           PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
           AWS_REGION: ${{ inputs.aws_region }}
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+          DEPLOY_IMAGE_TAG: ${{ github.sha }}
         run: |
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
@@ -279,7 +280,8 @@ jobs:
         run: |
           ECR_URI="${{ steps.pulumi_outputs.outputs.ecr_uri }}"
           echo "Building and pushing Docker image to $ECR_URI"
-          docker build -t "$ECR_URI:latest" ./service
+          docker build -t "$ECR_URI:${{ github.sha }}" -t "$ECR_URI:latest" ./service
+          docker push "$ECR_URI:${{ github.sha }}"
           docker push "$ECR_URI:latest"
 
       - name: Build and push AgentCore images
@@ -313,9 +315,9 @@ jobs:
             fi
             
             echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI"
-            docker build -t "$ECR_URI:latest" "$BUILD_DIR"
-            docker push "$ECR_URI:latest"
-            echo "✓ Pushed $IMAGE_NAME"
+            docker build -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
+            docker push "$ECR_URI:${{ github.sha }}"
+            echo "✓ Pushed $IMAGE_NAME:${{ github.sha }}"
           done
 
       - name: Activate AgentCore runtimes
@@ -325,6 +327,7 @@ jobs:
           PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
           AWS_REGION: ${{ inputs.aws_region }}
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+          DEPLOY_IMAGE_TAG: ${{ github.sha }}
         run: |
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"

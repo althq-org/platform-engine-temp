@@ -60,7 +60,8 @@ def agentcore_runtime_handler(
         image_name: str = rt["image"]
         repo_name = f"{service_name}-{image_name}"
         ecr_repo = create_ecr_repository(repo_name, aws_provider)
-        image_uri = pulumi.Output.concat(ecr_repo.repository_url, ":latest")
+        image_tag = os.environ.get("DEPLOY_IMAGE_TAG", "latest")
+        image_uri = pulumi.Output.concat(ecr_repo.repository_url, f":{image_tag}")
 
         env_vars = {
             **rt.get("environmentVariables", {}),
