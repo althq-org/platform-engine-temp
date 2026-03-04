@@ -331,9 +331,9 @@ jobs:
         run: |
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          echo "Re-running Pulumi up to activate AgentCore runtimes with pushed images..."
+          echo "Re-running Pulumi up with --refresh to activate AgentCore runtimes..."
           uv run pulumi stack select "$STACK_NAME" -C devops
-          uv run pulumi up --yes --non-interactive -C devops
+          uv run pulumi up --yes --non-interactive --refresh -C devops
 
       - name: Force ECS service deployment
         if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
