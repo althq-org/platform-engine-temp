@@ -1,5 +1,5 @@
 # Reusable workflow: provision a service from platform.yaml (ECR, ECS, ALB listener rule, Cloudflare DNS).
-# Called by service repos (e.g. my-ecs-service) on push to main.
+# Called by service repos on push to main (deploy) or on PR (preview).
 name: Provision from platform.yaml
 
 on:
@@ -32,6 +32,11 @@ on:
         description: "AWS account ID"
         required: true
         type: string
+      preview_only:
+        description: "If true, run pulumi preview instead of pulumi up (no deploy)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   id-token: write
@@ -192,7 +197,21 @@ jobs:
             fi
           done
 
+      - name: Pulumi preview
+        if: inputs.preview_only
+        working-directory: engine
+        env:
+          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
+          AWS_REGION: ${{ inputs.aws_region }}
+          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
+        run: |
+          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
+          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
+          uv run pulumi stack select "$STACK_NAME" -C devops
+          uv run pulumi preview --non-interactive -C devops
+
       - name: Pulumi up
+        if: ${{ !inputs.preview_only }}
         working-directory: engine
         env:
           PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
@@ -205,6 +224,7 @@ jobs:
           uv run pulumi up --yes --non-interactive -C devops
 
       - name: Get Pulumi outputs
+        if: ${{ !inputs.preview_only }}
         id: pulumi_outputs
         working-directory: engine
         env:
@@ -237,12 +257,12 @@ jobs:
           echo "has_ecs=$HAS_ECS" >> $GITHUB_OUTPUT
 
       - name: Login to Amazon ECR
-        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
         run: |
           aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
 
       - name: Build and push Docker image
-        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
         run: |
           ECR_URI="${{ steps.pulumi_outputs.outputs.ecr_uri }}"
           echo "Building and pushing Docker image to $ECR_URI"
@@ -250,7 +270,7 @@ jobs:
           docker push "$ECR_URI:latest"
 
       - name: Force ECS service deployment
-        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
         run: |
           aws ecs update-service \
             --cluster "${{ steps.pulumi_outputs.outputs.cluster }}" \
@@ -259,12 +279,12 @@ jobs:
             --region ${{ inputs.aws_region }}
 
       - name: Output service URL
-        if: steps.pulumi_outputs.outputs.has_ecs == 'true'
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
         run: |
           echo "Service URL: https://${{ steps.service_name.outputs.service_name }}.althq-dev.com"
       
       - name: Output provisioned resources
-        if: steps.pulumi_outputs.outputs.has_ecs != 'true'
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs != 'true' }}
         working-directory: engine
         env:
           PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
