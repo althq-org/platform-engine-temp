@@ -65,11 +65,12 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         try:
             resp = client.create_agent_runtime(**create_args)
         except client.exceptions.ValidationException as e:
-            if "image identifier does not exist" in str(e):
+            err_msg = str(e)
+            if "image identifier does not exist" in err_msg or "Architecture incompatible" in err_msg:
                 print(
-                    f"WARNING: ECR image not found for runtime '{props['runtime_name']}'. "
-                    "Runtime creation deferred until image is pushed. "
-                    "Push a container image to ECR and re-run deploy.",
+                    f"WARNING: ECR image not usable for runtime '{props['runtime_name']}': {err_msg}. "
+                    "Runtime creation deferred until a valid image is pushed. "
+                    "Push a compatible container image to ECR and re-run deploy.",
                     file=sys.stderr,
                 )
                 sentinel = f"{PENDING_IMAGE_PREFIX}{props['runtime_name']}"
