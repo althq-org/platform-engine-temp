@@ -270,6 +270,16 @@ jobs:
           echo "$OUTPUTS_JSON" >> $GITHUB_OUTPUT
           echo "OUTPUTS_EOF" >> $GITHUB_OUTPUT
 
+      - name: Set up QEMU for multi-arch builds
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_agentcore == 'true' }}
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to Amazon ECR
         if: ${{ !inputs.preview_only && (steps.pulumi_outputs.outputs.has_ecs == 'true' || steps.pulumi_outputs.outputs.has_agentcore == 'true') }}
         run: |
@@ -315,8 +325,7 @@ jobs:
             fi
             
             echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI (arm64)"
-            docker build --platform linux/arm64 -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
-            docker push "$ECR_URI:${{ github.sha }}"
+            docker buildx build --platform linux/arm64 --push -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
             echo "✓ Pushed $IMAGE_NAME:${{ github.sha }}"
           done
 
