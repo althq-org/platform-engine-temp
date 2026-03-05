@@ -144,7 +144,23 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         if new_props.get("description"):
             update_args["description"] = new_props["description"]
 
-        client.update_agent_runtime(**update_args)
+        try:
+            client.update_agent_runtime(**update_args)
+        except client.exceptions.ValidationException as e:
+            err_msg = str(e)
+            if "image identifier does not exist" in err_msg or "Architecture incompatible" in err_msg:
+                # Image not pushed yet (workflow runs Pulumi up before build/push). Skip update;
+                # "Activate AgentCore runtimes" will run Pulumi up again after push.
+                print(
+                    f"WARNING: Skipping runtime update — image not in ECR yet: {err_msg[:200]}",
+                    file=sys.stderr,
+                )
+                return pulumi.dynamic.UpdateResult(outs={
+                    **new_props,
+                    "agent_runtime_id": id_,
+                    "agent_runtime_arn": old_props.get("agent_runtime_arn", ""),
+                })
+            raise
 
         return pulumi.dynamic.UpdateResult(outs={
             **new_props,
