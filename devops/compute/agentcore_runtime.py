@@ -156,7 +156,7 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
                     file=sys.stderr,
                 )
                 return pulumi.dynamic.UpdateResult(outs={
-                    **new_props,
+                    **old_props,  # Keep old state so --refresh detects diff on next run
                     "agent_runtime_id": id_,
                     "agent_runtime_arn": old_props.get("agent_runtime_arn", ""),
                 })
@@ -251,3 +251,4 @@ def create_agentcore_runtime(
         subnet_ids=subnet_ids,
         security_group_ids=security_group_ids,
     )
+
