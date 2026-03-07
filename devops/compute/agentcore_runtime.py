@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-import sys
 from typing import Any
 
 import pulumi
 import pulumi.dynamic
-
-PENDING_IMAGE_PREFIX = "pending-no-image-"
 
 
 class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
@@ -62,24 +59,7 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
                     }
                 }
 
-        try:
-            resp = client.create_agent_runtime(**create_args)
-        except client.exceptions.ValidationException as e:
-            err_msg = str(e)
-            if "image identifier does not exist" in err_msg or "Architecture incompatible" in err_msg:
-                print(
-                    f"WARNING: ECR image not usable for runtime '{props['runtime_name']}': {err_msg}. "
-                    "Runtime creation deferred until a valid image is pushed. "
-                    "Push a compatible container image to ECR and re-run deploy.",
-                    file=sys.stderr,
-                )
-                sentinel = f"{PENDING_IMAGE_PREFIX}{props['runtime_name']}"
-                return pulumi.dynamic.CreateResult(
-                    id_=sentinel,
-                    outs={**props, "agent_runtime_id": sentinel, "agent_runtime_arn": ""},
-                )
-            raise
-
+        resp = client.create_agent_runtime(**create_args)
         runtime_id = resp["agentRuntimeId"]
         runtime_arn = resp["agentRuntimeArn"]
 
@@ -93,15 +73,23 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         )
 
     def read(self, id_: str, props: dict[str, Any]) -> pulumi.dynamic.ReadResult:
-        if id_.startswith(PENDING_IMAGE_PREFIX):
+        # Handle stale PENDING sentinel IDs from before this refactor.
+        if id_.startswith("pending-no-image-"):
             return pulumi.dynamic.ReadResult(id_="", outs={})
         try:
             client = self._client()
             resp = client.get_agent_runtime(agentRuntimeId=id_)
+            # Read the actual containerUri so --refresh detects real image drift.
+            actual_image_uri = (
+                resp.get("agentRuntimeArtifact", {})
+                .get("containerConfiguration", {})
+                .get("containerUri", props.get("image_uri", ""))
+            )
             return pulumi.dynamic.ReadResult(
                 id_=id_,
                 outs={
                     **props,
+                    "image_uri": actual_image_uri,
                     "agent_runtime_id": id_,
                     "agent_runtime_arn": resp["agentRuntimeArn"],
                 },
@@ -112,11 +100,12 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
     def update(
         self, id_: str, old_props: dict[str, Any], new_props: dict[str, Any]
     ) -> pulumi.dynamic.UpdateResult:
-        client = self._client()
-
-        if id_.startswith(PENDING_IMAGE_PREFIX):
+        # Handle transition from stale PENDING sentinel (pre-refactor state).
+        if id_.startswith("pending-no-image-"):
             result = self.create(new_props)
             return pulumi.dynamic.UpdateResult(outs=result.outs)
+
+        client = self._client()
 
         network_config: dict[str, Any] = {
             "networkMode": new_props.get("network_mode", "PUBLIC"),
@@ -144,23 +133,7 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         if new_props.get("description"):
             update_args["description"] = new_props["description"]
 
-        try:
-            client.update_agent_runtime(**update_args)
-        except client.exceptions.ValidationException as e:
-            err_msg = str(e)
-            if "image identifier does not exist" in err_msg or "Architecture incompatible" in err_msg:
-                # Image not pushed yet (workflow runs Pulumi up before build/push). Skip update;
-                # "Activate AgentCore runtimes" will run Pulumi up again after push.
-                print(
-                    f"WARNING: Skipping runtime update — image not in ECR yet: {err_msg[:200]}",
-                    file=sys.stderr,
-                )
-                return pulumi.dynamic.UpdateResult(outs={
-                    **old_props,  # Keep old state so --refresh detects diff on next run
-                    "agent_runtime_id": id_,
-                    "agent_runtime_arn": old_props.get("agent_runtime_arn", ""),
-                })
-            raise
+        client.update_agent_runtime(**update_args)
 
         return pulumi.dynamic.UpdateResult(outs={
             **new_props,
@@ -169,7 +142,7 @@ class _AgentCoreRuntimeProvider(pulumi.dynamic.ResourceProvider):
         })
 
     def delete(self, id_: str, props: dict[str, Any]) -> None:
-        if id_.startswith(PENDING_IMAGE_PREFIX):
+        if id_.startswith("pending-no-image-"):
             return
         try:
             client = self._client()
@@ -251,4 +224,3 @@ def create_agentcore_runtime(
         subnet_ids=subnet_ids,
         security_group_ids=security_group_ids,
     )
-

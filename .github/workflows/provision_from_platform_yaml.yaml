@@ -112,7 +112,7 @@ jobs:
           STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           KMS_PROVIDER="awskms://alias/pulumi_backend_software?region=${{ inputs.aws_region }}"
-          
+
           echo "Attempting to select stack: $STACK_NAME"
           if uv run pulumi stack select "$STACK_NAME" -C devops 2>&1; then
             echo "✓ Selected existing stack"
@@ -124,23 +124,23 @@ jobs:
               -C devops
             echo "✓ Stack created"
           fi
-          
+
           # CRITICAL: Ensure local Pulumi.<stack>.yaml has KMS metadata
           # Without this, Pulumi falls back to expecting PULUMI_CONFIG_PASSPHRASE
           echo "Ensuring local stack YAML has KMS secrets provider metadata..."
           STACK_YAML="devops/Pulumi.$STACK_NAME.yaml"
-          
+
           # Export stack to temporary file
           STACK_EXPORT_FILE=$(mktemp)
           uv run pulumi stack export -C devops > "$STACK_EXPORT_FILE" 2>&1
-          
+
           # Use Python script to update YAML with KMS metadata
           # Note: We're already in the 'engine' working directory
           python3 scripts/ensure_kms_metadata.py "$STACK_EXPORT_FILE" "$STACK_YAML"
-          
+
           # Cleanup
           rm -f "$STACK_EXPORT_FILE"
-          
+
           echo "Stack info:"
           uv run pulumi stack -C devops 2>&1 || true
 
@@ -172,17 +172,17 @@ jobs:
           else:
               print('none')
           ")
-          
+
           if [ "$SECRETS_FORMAT" = "none" ]; then
             echo "No secrets declared in platform.yaml"
             exit 0
           fi
-          
+
           if [ "$SECRETS_FORMAT" = "kms" ]; then
             echo "✓ Secrets are KMS-encrypted in platform.yaml — decrypted at deploy time"
             exit 0
           fi
-          
+
           # Legacy format: export each required secret from GitHub secrets
           REQUIRED_SECRETS=$(python3 -c "
           import yaml
@@ -190,7 +190,7 @@ jobs:
           secrets = config.get('spec', {}).get('secrets', [])
           print(' '.join(secrets))
           ")
-          
+
           for SECRET_NAME in $REQUIRED_SECRETS; do
             SECRET_VALUE=$(echo "$ALL_SECRETS" | jq -r ".[\"$SECRET_NAME\"] // empty")
             if [ -n "$SECRET_VALUE" ]; then
@@ -201,6 +201,76 @@ jobs:
               echo "⚠ Missing secret: $SECRET_NAME (not set in GitHub secrets)"
             fi
           done
+
+      # -----------------------------------------------------------------------
+      # AgentCore: build and push images BEFORE Pulumi runs.
+      #
+      # Why this order matters: Pulumi calls update_agent_runtime with the new
+      # image URI. AWS validates that the ECR image exists at call time. Running
+      # Pulumi first (old order) caused ValidationException because the image
+      # hadn't been pushed yet. Building first eliminates that error path and
+      # removes the need for exception-swallowing or a second Pulumi pass.
+      #
+      # ECR repo names are deterministic ({service}-{image}), so we can
+      # create them and push before Pulumi without needing Pulumi outputs.
+      # -----------------------------------------------------------------------
+
+      - name: Set up QEMU for multi-arch builds
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Pre-create AgentCore ECR repos
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
+        run: |
+          # ECR repo names are deterministic: {service_name}-{image_name}.
+          # Create them idempotently so we can push before Pulumi runs.
+          for row in $(echo '${{ steps.service_name.outputs.agentcore_runtimes }}' | jq -c '.[]'); do
+            IMAGE_NAME=$(echo "$row" | jq -r '.image')
+            REPO_NAME="${{ steps.service_name.outputs.service_name }}-${IMAGE_NAME}"
+            echo "Ensuring ECR repo: $REPO_NAME"
+            aws ecr describe-repositories --repository-names "$REPO_NAME" --region ${{ inputs.aws_region }} > /dev/null 2>&1 \
+              || aws ecr create-repository --repository-name "$REPO_NAME" --region ${{ inputs.aws_region }} > /dev/null
+            echo "✓ $REPO_NAME ready"
+          done
+
+      - name: Login to Amazon ECR (AgentCore pre-build)
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
+        run: |
+          aws ecr get-login-password --region ${{ inputs.aws_region }} | \
+            docker login --username AWS --password-stdin \
+            ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
+
+      - name: Build and push AgentCore images
+        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
+        run: |
+          for row in $(echo '${{ steps.service_name.outputs.agentcore_runtimes }}' | jq -c '.[]'); do
+            IMAGE_NAME=$(echo "$row" | jq -r '.image')
+            ARCH=$(echo "$row" | jq -r '.arch')
+            REPO_NAME="${{ steps.service_name.outputs.service_name }}-${IMAGE_NAME}"
+            ECR_URI="${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com/${REPO_NAME}"
+
+            BUILD_DIR="./service/${IMAGE_NAME}"
+            if [ ! -f "$BUILD_DIR/Dockerfile" ]; then
+              echo "⚠ No Dockerfile at $BUILD_DIR — skipping $IMAGE_NAME"
+              continue
+            fi
+
+            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI (${ARCH})"
+            docker buildx build --platform "linux/${ARCH}" --push \
+              -t "$ECR_URI:${{ github.sha }}" \
+              -t "$ECR_URI:latest" \
+              "$BUILD_DIR"
+            echo "✓ Pushed $IMAGE_NAME:${{ github.sha }} and :latest"
+          done
+
+      # -----------------------------------------------------------------------
+      # Pulumi: single run. Image exists by this point so update_agent_runtime
+      # succeeds immediately. No second pass, no --refresh workaround needed.
+      # -----------------------------------------------------------------------
 
       - name: Pulumi preview
         if: inputs.preview_only
@@ -242,21 +312,21 @@ jobs:
           uv run pulumi stack select "$STACK_NAME" -C devops
           OUTPUTS_JSON=$(uv run pulumi stack output --json -C devops 2>&1)
           echo "Raw outputs: $OUTPUTS_JSON"
-          
+
           ECR_URI=$(echo "$OUTPUTS_JSON" | jq -r '.ecr_repository_uri // empty')
           CLUSTER=$(echo "$OUTPUTS_JSON" | jq -r '.ecs_cluster_name // empty')
           SERVICE=$(echo "$OUTPUTS_JSON" | jq -r '.ecs_service_name // empty')
-          
+
           HAS_ECS="false"
           if [ -n "$ECR_URI" ] && [ -n "$CLUSTER" ] && [ -n "$SERVICE" ]; then
             HAS_ECS="true"
           fi
-          
+
           echo "ECR_URI=$ECR_URI"
           echo "CLUSTER=$CLUSTER"
           echo "SERVICE=$SERVICE"
           echo "HAS_ECS=$HAS_ECS"
-          
+
           echo "ecr_uri=$ECR_URI" >> $GITHUB_OUTPUT
           echo "cluster=$CLUSTER" >> $GITHUB_OUTPUT
           echo "service=$SERVICE" >> $GITHUB_OUTPUT
@@ -265,18 +335,12 @@ jobs:
           echo "$OUTPUTS_JSON" >> $GITHUB_OUTPUT
           echo "OUTPUTS_EOF" >> $GITHUB_OUTPUT
 
-      - name: Set up QEMU for multi-arch builds
-        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Amazon ECR
-        if: ${{ !inputs.preview_only && (steps.pulumi_outputs.outputs.has_ecs == 'true' || steps.service_name.outputs.has_agentcore == 'true') }}
+      - name: Login to Amazon ECR (ECS post-Pulumi)
+        if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
         run: |
-          aws ecr get-login-password --region ${{ inputs.aws_region }} | docker login --username AWS --password-stdin ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
+          aws ecr get-login-password --region ${{ inputs.aws_region }} | \
+            docker login --username AWS --password-stdin \
+            ${{ inputs.aws_acct_id }}.dkr.ecr.${{ inputs.aws_region }}.amazonaws.com
 
       - name: Build and push Docker image
         if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
@@ -286,49 +350,6 @@ jobs:
           docker build -t "$ECR_URI:${{ github.sha }}" -t "$ECR_URI:latest" ./service
           docker push "$ECR_URI:${{ github.sha }}"
           docker push "$ECR_URI:latest"
-
-      - name: Build and push AgentCore images
-        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
-        run: |
-          OUTPUTS='${{ steps.pulumi_outputs.outputs.outputs_json }}'
-          
-          for row in $(echo '${{ steps.service_name.outputs.agentcore_runtimes }}' | jq -c '.[]'); do
-            IMAGE_NAME=$(echo "$row" | jq -r '.image')
-            RUNTIME_NAME=$(echo "$row" | jq -r '.name')
-            ARCH=$(echo "$row" | jq -r '.arch')
-            OUTPUT_KEY="ecr_$(echo "$IMAGE_NAME" | tr '-' '_')_uri"
-            ECR_URI=$(echo "$OUTPUTS" | jq -r ".${OUTPUT_KEY} // empty")
-            
-            if [ -z "$ECR_URI" ]; then
-              echo "⚠ No ECR output found for $IMAGE_NAME (expected .$OUTPUT_KEY)"
-              continue
-            fi
-            
-            BUILD_DIR="./service/${IMAGE_NAME}"
-            if [ ! -f "$BUILD_DIR/Dockerfile" ]; then
-              echo "⚠ No Dockerfile at $BUILD_DIR — skipping $IMAGE_NAME"
-              continue
-            fi
-            
-            echo "Building $IMAGE_NAME from $BUILD_DIR → $ECR_URI (${ARCH})"
-            docker buildx build --platform "linux/${ARCH}" --push -t "$ECR_URI:${{ github.sha }}" "$BUILD_DIR"
-            echo "✓ Pushed $IMAGE_NAME:${{ github.sha }}"
-          done
-
-      - name: Activate AgentCore runtimes
-        if: ${{ !inputs.preview_only && steps.service_name.outputs.has_agentcore == 'true' }}
-        working-directory: engine
-        env:
-          PLATFORM_YAML_PATH: ${{ github.workspace }}/service/${{ inputs.platform_yaml_path }}
-          AWS_REGION: ${{ inputs.aws_region }}
-          PULUMI_BACKEND_URL: s3://${{ inputs.aws_acct_id }}-pulumi-backend-software
-          DEPLOY_IMAGE_TAG: ${{ github.sha }}
-        run: |
-          STACK_NAME="${{ inputs.stack }}.${{ steps.service_name.outputs.service_name }}.${{ inputs.aws_region }}"
-          export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
-          echo "Re-running Pulumi up with --refresh to activate AgentCore runtimes..."
-          uv run pulumi stack select "$STACK_NAME" -C devops
-          uv run pulumi up --yes --non-interactive --refresh -C devops
 
       - name: Force ECS service deployment
         if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
@@ -343,7 +364,7 @@ jobs:
         if: ${{ !inputs.preview_only && steps.pulumi_outputs.outputs.has_ecs == 'true' }}
         run: |
           echo "Service URL: https://${{ steps.service_name.outputs.service_name }}.althq-dev.com"
-      
+
       - name: Output provisioned resources
         if: ${{ !inputs.preview_only }}
         working-directory: engine
@@ -354,4 +375,10 @@ jobs:
           export PATH="$HOME/.local/bin:$HOME/.pulumi/bin:$PATH"
           uv run pulumi stack select "$STACK_NAME" -C devops
           echo "Provisioned resources:"
-          uv run pulumi stack output --json -C devops
+          OUTPUTS=$(uv run pulumi stack output --json -C devops)
+          echo "$OUTPUTS"
+          ARN=$(echo "$OUTPUTS" | jq -r '.agentcore_runtime_claude_agent_arn // empty')
+          if [ -n "$ARN" ]; then
+            echo "::notice title=AgentCore runtime ARN::Use with chat-deployed: AGENTCORE_RUNTIME_ARN=$ARN"
+            echo "AgentCore runtime ARN (stable across deploys): $ARN"
+          fi
