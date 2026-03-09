@@ -44,6 +44,19 @@ def dynamodb_handler(
         ttl: str | None = tbl.get("ttlAttribute")
         billing: str = tbl.get("billingMode", "PAY_PER_REQUEST")
 
+        gsi_raw: list[dict[str, Any]] = tbl.get("gsi") or []
+        gsi_list: list[dict[str, Any]] = [
+            {
+                "name": g["name"],
+                "partition_key": g["partitionKey"],
+                "partition_key_type": g.get("partitionKeyType", "S"),
+                "sort_key": g.get("sortKey"),
+                "sort_key_type": g.get("sortKeyType", "S") if g.get("sortKey") else None,
+                "projection_type": g.get("projectionType", "ALL"),
+            }
+            for g in gsi_raw
+        ]
+
         table = create_dynamodb_table(
             service_name=service_name,
             table_name=name,
@@ -54,6 +67,7 @@ def dynamodb_handler(
             ttl_attribute=ttl,
             billing_mode=billing,
             aws_provider=ctx.aws_provider,
+            global_secondary_indexes=gsi_list if gsi_list else None,
         )
 
         ctx.set(f"dynamodb.tables.{name}.arn", table.arn)
