@@ -368,7 +368,7 @@
                 "title": "Table",
                 "additionalProperties": false,
                 "required": ["name", "partitionKey"],
-                "x-order": ["name", "partitionKey", "partitionKeyType", "sortKey", "sortKeyType", "ttlAttribute", "billingMode"],
+                "x-order": ["name", "partitionKey", "partitionKeyType", "sortKey", "sortKeyType", "ttlAttribute", "billingMode", "gsi"],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -410,6 +410,56 @@
                     "enum": ["PAY_PER_REQUEST", "PROVISIONED"],
                     "default": "PAY_PER_REQUEST",
                     "description": "PAY_PER_REQUEST (on-demand): you pay per read/write, no capacity planning needed. Good for variable or unpredictable traffic. PROVISIONED: you specify read/write capacity units upfront — cheaper at high, steady throughput but requires capacity planning. Start with PAY_PER_REQUEST and switch to PROVISIONED only if costs become significant."
+                  },
+                  "gsi": {
+                    "type": "array",
+                    "title": "Global Secondary Indexes",
+                    "description": "Optional GSIs for alternate query patterns. Each GSI allows you to query by a different partition key than the table's primary key.",
+                    "items": {
+                      "type": "object",
+                      "title": "GSI",
+                      "additionalProperties": false,
+                      "required": ["name", "partitionKey"],
+                      "x-order": ["name", "partitionKey", "partitionKeyType", "sortKey", "sortKeyType", "projectionType"],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "title": "Index name",
+                          "description": "Unique name for this GSI (e.g. jobId-index)."
+                        },
+                        "partitionKey": {
+                          "type": "string",
+                          "title": "GSI partition key",
+                          "description": "Attribute to use as the GSI partition key."
+                        },
+                        "partitionKeyType": {
+                          "type": "string",
+                          "title": "GSI partition key type",
+                          "enum": ["S", "N", "B"],
+                          "default": "S",
+                          "description": "Data type of the GSI partition key."
+                        },
+                        "sortKey": {
+                          "type": "string",
+                          "title": "GSI sort key (optional)",
+                          "description": "Optional sort key for the GSI."
+                        },
+                        "sortKeyType": {
+                          "type": "string",
+                          "title": "GSI sort key type",
+                          "enum": ["S", "N", "B"],
+                          "default": "S",
+                          "description": "Data type of the GSI sort key."
+                        },
+                        "projectionType": {
+                          "type": "string",
+                          "title": "Projection type",
+                          "enum": ["ALL", "KEYS_ONLY", "INCLUDE"],
+                          "default": "ALL",
+                          "description": "Which attributes to project into the index. ALL projects all attributes. KEYS_ONLY projects only key attributes."
+                        }
+                      }
+                    }
                   }
                 }
               }
