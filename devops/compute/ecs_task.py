@@ -17,6 +17,7 @@ def _make_container_def(
     config: PlatformConfig,
     container_secrets: list[dict[str, Any]],
     efs_mount_path: str | None = None,
+    extra_env_vars: dict[str, str] | None = None,
 ) -> str:
     """Build ECS container definition JSON string."""
     container_name = config.service_name.replace(".", "-").replace("/", "-")[:255]
@@ -26,6 +27,9 @@ def _make_container_def(
         {"name": "UVICORN_PORT", "value": str(config.container_port)},
         *container_secrets,
     ]
+    if extra_env_vars:
+        for k, v in extra_env_vars.items():
+            env_vars.append({"name": k, "value": v})
     container_spec: dict[str, Any] = {
         "name": container_name,
         "image": uri,
@@ -65,14 +69,36 @@ def create_task_definition(
     efs_filesystem_id: pulumi.Output[str] | None = None,
     efs_access_point_arn: pulumi.Output[str] | None = None,
     efs_mount_path: str = "/mnt/efs",
+    extra_env_vars: dict[str, str] | None = None,
+    extra_env_outputs: dict[str, pulumi.Output[str]] | None = None,
 ) -> pulumi_aws.ecs.TaskDefinition:
-    """Create ECS Fargate task definition with container from ECR."""
+    """Create ECS Fargate task definition with container from ECR.
+
+    extra_env_vars: plain string env vars known at Pulumi program time.
+    extra_env_outputs: env vars whose values are Pulumi Outputs (e.g. ARNs from other resources).
+    Both are merged and injected into the container definition.
+    """
     image_uri = pulumi.Output.concat(ecr_repo.repository_url, ":latest")
-    container_def = image_uri.apply(
-        lambda uri: _make_container_def(
-            uri, config, container_secrets, efs_mount_path=efs_mount_path if efs_filesystem_id else None
+    _extra_static = extra_env_vars or {}
+
+    if extra_env_outputs:
+        keys = list(extra_env_outputs.keys())
+        vals = list(extra_env_outputs.values())
+        container_def = pulumi.Output.all(image_uri, *vals).apply(
+            lambda args: _make_container_def(
+                args[0], config, container_secrets,
+                efs_mount_path=efs_mount_path if efs_filesystem_id else None,
+                extra_env_vars={**_extra_static, **dict(zip(keys, args[1:]))},
+            )
         )
-    )
+    else:
+        container_def = image_uri.apply(
+            lambda uri: _make_container_def(
+                uri, config, container_secrets,
+                efs_mount_path=efs_mount_path if efs_filesystem_id else None,
+                extra_env_vars=_extra_static or None,
+            )
+        )
     task_def_args: dict[str, Any] = {
         "family": config.service_name,
         "cpu": config.cpu,

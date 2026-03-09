@@ -72,6 +72,18 @@ def compute_handler(
                 f"Secret '{name}' declared in platform.yaml but not found in environment"
             )
 
+    # Collect extra env vars from other capabilities that ran before compute in this phase.
+    # Plain strings (e.g. S3 bucket names) go in extra_env_vars.
+    # Pulumi Outputs (e.g. AgentCore runtime ARNs) go in extra_env_outputs.
+    extra_env_vars: dict[str, str] = {}
+    extra_env_outputs: dict[str, Any] = {}
+    s3_env = ctx.get("s3.bucket_env_vars")
+    if s3_env:
+        extra_env_vars.update({k: v for k, v in s3_env.items() if isinstance(v, str)})
+    agentcore_outputs = ctx.get("agentcore.task_env_outputs")
+    if agentcore_outputs:
+        extra_env_outputs.update(agentcore_outputs)
+
     task_def = create_task_definition(
         config,
         ecr_repo,
@@ -79,6 +91,8 @@ def compute_handler(
         exec_role,
         container_secrets,
         aws_provider,
+        extra_env_vars=extra_env_vars or None,
+        extra_env_outputs=extra_env_outputs or None,
     )
     ecs_service = create_ecs_service(
         config=config,

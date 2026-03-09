@@ -37,6 +37,9 @@ def agentcore_runtime_handler(
     ctx.set("agentcore.memory.id", memory.memory_id)
     ctx.export("agentcore_memory_id", memory.memory_id)
 
+    # Seed task env outputs with memory ID so compute picks it up
+    task_env_outputs: dict[str, Any] = {"AGENTCORE_MEMORY_ID": memory.memory_id}
+
     _grant_memory_access(ctx, agentcore_role, memory.memory_arn, service_name)
 
     bucket_arns = ctx.get("s3.bucket_arns")
@@ -93,6 +96,12 @@ def agentcore_runtime_handler(
             runtime.agent_runtime_arn,
         )
         ctx.export(f"ecr_{image_name.replace('-', '_')}_uri", ecr_repo.repository_url)
+        # First runtime becomes the primary ARN injected into the ECS task
+        if "AGENTCORE_RUNTIME_ARN" not in task_env_outputs:
+            task_env_outputs["AGENTCORE_RUNTIME_ARN"] = runtime.agent_runtime_arn
+
+    # Expose all agentcore outputs as task env vars so compute picks them up
+    ctx.set("agentcore.task_env_outputs", task_env_outputs)
 
     task_role = ctx.get("iam.task_role")
     if task_role is not None:
