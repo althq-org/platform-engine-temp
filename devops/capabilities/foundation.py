@@ -18,7 +18,8 @@ def provision_foundation(spec_sections: dict, ctx: CapabilityContext) -> None:
         from devops.networking.security_groups import create_ecs_security_group
 
         compute_sg = create_ecs_security_group(
-            service_name, vpc_id, vpc_cidr, aws_provider
+            service_name, vpc_id, vpc_cidr, aws_provider,
+            container_port=ctx.config.container_port,
         )
         ctx.set("security_groups.compute", compute_sg)
         ctx.set("security_groups.compute.id", compute_sg.id)

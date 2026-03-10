@@ -9,8 +9,9 @@ def create_ecs_security_group(
     vpc_id: str,
     vpc_cidr: str,
     aws_provider: pulumi_aws.Provider,
+    container_port: int = 80,
 ) -> pulumi_aws.ec2.SecurityGroup:
-    """Create security group for ECS tasks: ingress TCP 80 from VPC, egress all."""
+    """Create security group for ECS tasks: ingress on container port from VPC, egress all."""
     return pulumi_aws.ec2.SecurityGroup(
         f"{service_name}_ecs_sg",
         name=f"{service_name}-ecs",
@@ -19,8 +20,8 @@ def create_ecs_security_group(
         ingress=[
             pulumi_aws.ec2.SecurityGroupIngressArgs(
                 protocol="tcp",
-                from_port=80,
-                to_port=80,
+                from_port=container_port,
+                to_port=container_port,
                 cidr_blocks=[vpc_cidr],
                 description="HTTP from VPC",
             ),
