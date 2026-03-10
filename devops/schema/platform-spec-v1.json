@@ -11,6 +11,18 @@
     "spec"
   ],
   "additionalProperties": false,
+  "$defs": {
+    "afterHint": {
+      "type": "array",
+      "title": "Run after",
+      "description": "Other capabilities that must be fully provisioned before this one runs. The platform handles standard ordering automatically — only set this for custom ordering needs. The admin-console wizard filters this list to only show capabilities you have declared.",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["s3", "dynamodb", "compute", "agentcoreRuntime", "storage", "cache", "database", "serviceDiscovery", "lambda", "eventbridge"]
+      }
+    }
+  },
   "properties": {
     "apiVersion": {
       "type": "string",
@@ -63,9 +75,11 @@
             "memory",
             "instances",
             "healthCheck",
-            "publicPaths"
+            "publicPaths",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "type": {
               "type": "string",
               "title": "Compute type",
@@ -181,9 +195,11 @@
           "description": "Provisions an EFS (NFS) filesystem with mount targets and an access point. Containers or Lambdas can mount it for shared persistent storage (e.g. model weights, uploaded files, shared scratch space).",
           "additionalProperties": false,
           "x-order": [
-            "efs"
+            "efs",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "efs": {
               "type": "object",
               "title": "EFS configuration",
@@ -255,9 +271,11 @@
           "additionalProperties": false,
           "x-order": [
             "nodeType",
-            "numNodes"
+            "numNodes",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "engine": {
               "type": "string",
               "title": "Engine",
@@ -304,9 +322,11 @@
             "dbUsername",
             "instanceClass",
             "allocatedStorage",
-            "engine"
+            "engine",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "engine": {
               "type": "string",
               "title": "Engine",
@@ -356,8 +376,9 @@
           "description": "Grants your ECS task full access to the declared DynamoDB tables. Tables are created by your application on startup — the platform provisions IAM so the task role can read, write, and manage exactly these tables (and nothing else). Use this instead of RDS when you don't need SQL joins or strict relational constraints.",
           "additionalProperties": false,
           "required": ["tables"],
-          "x-order": ["tables"],
+          "x-order": ["tables", "after"],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "tables": {
               "type": "array",
               "title": "Tables",
@@ -472,9 +493,11 @@
           "description": "Creates an AWS Cloud Map private DNS namespace so services can find each other by hostname inside the VPC \u2014 without needing hardcoded IPs or external DNS. For example, if your namespace is agents.local, your service is reachable at my-service.agents.local from other services in the same VPC. Only add this if you have multiple services that need to call each other directly by name (e.g. an orchestrator calling worker services).",
           "additionalProperties": false,
           "x-order": [
-            "namespace"
+            "namespace",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "namespace": {
               "type": "string",
               "title": "DNS namespace",
@@ -488,9 +511,11 @@
           "description": "Provisions AWS Lambda functions using container images from ECR. Each function is a separate Lambda. For Agent Factory: provision your Lambda(s) here first \u2014 the platform creates the function resource and IAM role. Then your CI/CD workflow builds the container image and pushes it to ECR. You can use a placeholder image name now; the function will not be invokable until the image is pushed. This decouples infrastructure provisioning from code deployment.",
           "additionalProperties": false,
           "x-order": [
-            "functions"
+            "functions",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "functions": {
               "type": "array",
               "title": "Functions",
@@ -548,9 +573,11 @@
           "description": "Creates an EventBridge Scheduler group \u2014 a named container for scheduled rules (cron or rate-based). The group itself does not create schedules; you add individual schedules to it independently via the AWS console or CLI, with no redeploy required. Use this when you need time-based triggers (nightly jobs, polling tasks).",
           "additionalProperties": false,
           "x-order": [
-            "scheduleGroup"
+            "scheduleGroup",
+            "after"
           ],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "scheduleGroup": {
               "type": "string",
               "title": "Schedule group name",
@@ -564,8 +591,9 @@
           "description": "Creates S3 buckets for file and object storage. The engine auto-prefixes bucket names with the AWS account ID for global uniqueness.",
           "additionalProperties": false,
           "required": ["buckets"],
-          "x-order": ["buckets"],
+          "x-order": ["buckets", "after"],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "buckets": {
               "type": "array",
               "title": "Buckets",
@@ -641,8 +669,9 @@
           "description": "Creates AWS Bedrock AgentCore Runtime definitions for AI agents. Sessions run in isolated microVMs with consumption-based pricing.",
           "additionalProperties": false,
           "required": ["runtimes"],
-          "x-order": ["runtimes", "authorizer"],
+          "x-order": ["runtimes", "authorizer", "after"],
           "properties": {
+            "after": { "$ref": "#/$defs/afterHint" },
             "runtimes": {
               "type": "array",
               "title": "Runtimes",

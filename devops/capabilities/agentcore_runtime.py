@@ -13,7 +13,7 @@ from devops.capabilities.context import CapabilityContext
 from devops.capabilities.registry import Phase, register
 
 
-@register("agentcoreRuntime", phase=Phase.COMPUTE)
+@register("agentcoreRuntime", phase=Phase.INFRASTRUCTURE, after=["s3", "dynamodb"])
 def agentcore_runtime_handler(
     section_config: dict[str, Any],
     ctx: CapabilityContext,

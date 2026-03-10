@@ -31,6 +31,7 @@ class CapabilityDef:
     handler: Callable[[dict[str, Any], CapabilityContext], None]
     phase: Phase
     requires: list[str]
+    after: list[str]
 
 
 CAPABILITIES: dict[str, CapabilityDef] = {}
@@ -40,6 +41,7 @@ def register(
     name: str,
     phase: Phase,
     requires: list[str] | None = None,
+    after: list[str] | None = None,
 ) -> Callable[[CapabilityHandler], CapabilityHandler]:
     """Decorator to register a capability handler in CAPABILITIES."""
 
@@ -48,6 +50,7 @@ def register(
             handler=fn,
             phase=phase,
             requires=requires or [],
+            after=after or [],
         )
         return fn
 

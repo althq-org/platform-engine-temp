@@ -17,7 +17,7 @@ from devops.networking.cloudflare_access import create_access_application
 from devops.networking.dns import create_dns_record
 
 
-@register("compute", phase=Phase.COMPUTE)
+@register("compute", phase=Phase.COMPUTE, after=["agentcoreRuntime", "s3", "dynamodb"])
 def compute_handler(
     section_config: dict[str, Any],
     ctx: CapabilityContext,
